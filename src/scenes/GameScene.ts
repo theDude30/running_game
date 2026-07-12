@@ -151,8 +151,15 @@ export class GameScene extends Phaser.Scene {
 
     this.lastFrameAt = performance.now() / 1000;
     this.conductor.startIn(COUNTDOWN);
-    // Music begins the instant the countdown hits zero
-    this.audioSource?.start(this.audioCtx!.currentTime + COUNTDOWN);
+    if (this.audioSource && this.audioCtx) {
+      // Start the source early by the hardware output latency so the SOUND
+      // (not the sample clock) lands exactly on the countdown's zero — this
+      // is what makes obstacles feel aligned with what the player hears.
+      const latency =
+        (this.audioCtx.baseLatency || 0) +
+        ((this.audioCtx as AudioContext & { outputLatency?: number }).outputLatency || 0);
+      this.audioSource.start(this.audioCtx.currentTime + Math.max(0.05, COUNTDOWN - latency));
+    }
   }
 
   private buildPauseOverlay(): void {

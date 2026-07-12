@@ -2,19 +2,28 @@ import type { Beatmap, BeatEvent, ObstacleType } from './types';
 import { FFT } from './fft';
 
 /**
- * Turns decoded audio into a beatmap: band-split spectral-flux onset
- * detection → adaptive peak picking → density filter → deterministic
- * obstacle assignment. Same audio in, same level out — required for
- * fair multiplayer later.
+ * Turns decoded audio into a beatmap:
+ *   band-split spectral-flux onsets → beat-grid snapping → energy gating
+ *   (quiet sections become rest stretches) → density filter → feasibility
+ *   pass (no physically unclearable sequences) → obstacle assignment.
+ * Deterministic: same audio in, same level out.
  */
 
 const WIN = 1024;
 const HOP = 512;
 const LOW_BAND_HZ = 160; // kick drum energy lives below this
 const MID_BAND_HZ = 4000;
-const MIN_GAP = 0.42; // reaction-time floor between obstacles (seconds)
+const MIN_GAP = 0.45; // reaction-time floor between obstacles (seconds)
 const FIRST_EVENT_AT = 3; // give the player a running start
-const PEAK_RATIO = 1.4; // peak must exceed local mean by this factor
+const PEAK_RATIO = 1.5; // peak must exceed local mean by this factor
+const GRID_SNAP_TOLERANCE = 0.09; // onsets this close to the beat grid snap onto it
+const OFFGRID_MIN_STRENGTH = 0.5; // weaker off-grid onsets are noise → dropped
+const REST_ENERGY_RATIO = 0.35; // sections quieter than this × p75 get no obstacles
+const MAX_PER_WINDOW = 7; // density cap…
+const WINDOW_SEC = 4; // …per this many seconds
+const JUMP_RECOVERY = 0.75; // seconds the hero may be airborne after a forced jump
+const REST_EVERY = 18; // guarantee an empty stretch at least this often…
+const REST_LEN = 2.8; // …of at least this length (carved at the weakest spot)
 
 export interface AnalysisProgress {
   stage: 'analyzing' | 'building';
@@ -39,9 +48,11 @@ export async function generateBeatmap(
   const binHz = sampleRate / WIN;
   const lowMax = Math.max(2, Math.round(LOW_BAND_HZ / binHz));
   const midMax = Math.min(WIN / 2, Math.round(MID_BAND_HZ / binHz));
+  const frameSec = HOP / sampleRate;
 
   const lowFlux = new Float32Array(frameCount);
   const midFlux = new Float32Array(frameCount);
+  const rms = new Float32Array(frameCount);
   const windowed = new Float32Array(WIN);
   const mags = new Float32Array(WIN / 2);
   const prev = new Float32Array(WIN / 2);
@@ -50,7 +61,13 @@ export async function generateBeatmap(
 
   for (let f = 0; f < frameCount; f++) {
     const off = f * HOP;
-    for (let i = 0; i < WIN; i++) windowed[i] = channel[off + i] * hann[i];
+    let sumSq = 0;
+    for (let i = 0; i < WIN; i++) {
+      const s = channel[off + i];
+      windowed[i] = s * hann[i];
+      sumSq += s * s;
+    }
+    rms[f] = Math.sqrt(sumSq / WIN);
     fft.magnitudes(windowed, mags);
 
     let low = 0;
@@ -66,20 +83,25 @@ export async function generateBeatmap(
     lowFlux[f] = low;
     midFlux[f] = mid;
 
-    if (f % 2000 === 1999) {
+    if (f % 4000 === 3999) {
       onProgress?.({ stage: 'analyzing', pct: f / frameCount });
       await new Promise((r) => setTimeout(r, 0)); // keep the UI alive
     }
   }
 
   onProgress?.({ stage: 'building', pct: 1 });
-  const frameSec = HOP / sampleRate;
+
   const onsets = [
     ...pickPeaks(lowFlux, frameSec, 'low'),
     ...pickPeaks(midFlux, frameSec, 'mid'),
   ];
   const bpm = estimateBpm(lowFlux, midFlux, frameSec);
-  const events = toEvents(onsets, duration);
+  const snapped = snapToGrid(onsets, bpm);
+  const energetic = gateByEnergy(snapped, rms, frameSec);
+  const spaced = densityFilter(energetic, duration);
+  const breathing = carveRests(spaced, duration);
+  const events = assignTypes(breathing);
+  makeFeasible(events);
   return { name, bpm, duration, events };
 }
 
@@ -137,27 +159,210 @@ function estimateBpm(low: Float32Array, mid: Float32Array, frameSec: number): nu
   return Math.round(bpm);
 }
 
-/** Density-filter onsets and deterministically assign obstacle types. */
-function toEvents(onsets: Onset[], duration: number): BeatEvent[] {
+/**
+ * Find the beat-grid phase that best explains the strong onsets, then snap
+ * near-grid onsets onto eighth-note positions (this is what makes obstacles
+ * feel ON the music instead of merely near it). Weak off-grid onsets are
+ * treated as detection noise and dropped; strong ones survive as syncopation.
+ */
+function snapToGrid(onsets: Onset[], bpm: number): Onset[] {
+  const beat = 60 / bpm;
+  const grid = beat / 2; // eighth notes
+
+  let bestPhase = 0;
+  let bestScore = -Infinity;
+  for (let phase = 0; phase < grid; phase += grid / 24) {
+    let score = 0;
+    for (const o of onsets) {
+      const d = distToGrid(o.time, phase, grid);
+      if (d < 0.05) score += o.strength * (1 - d / 0.05);
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestPhase = phase;
+    }
+  }
+
+  const out: Onset[] = [];
+  for (const o of onsets) {
+    const d = distToGrid(o.time, bestPhase, grid);
+    if (d <= GRID_SNAP_TOLERANCE) {
+      const snappedTime = Math.round((o.time - bestPhase) / grid) * grid + bestPhase;
+      out.push({ ...o, time: snappedTime });
+    } else if (o.strength >= OFFGRID_MIN_STRENGTH) {
+      out.push(o);
+    }
+  }
+  return out;
+}
+
+function distToGrid(t: number, phase: number, grid: number): number {
+  const pos = (t - phase) % grid;
+  return Math.min(Math.abs(pos), grid - Math.abs(pos));
+}
+
+/**
+ * Quiet parts of the song produce empty road: drop events where the local
+ * loudness falls well below the track's typical level.
+ */
+function gateByEnergy(onsets: Onset[], rms: Float32Array, frameSec: number): Onset[] {
+  const n = rms.length;
+  if (n === 0) return onsets;
+
+  // ~1s smoothed loudness
+  const smoothN = Math.max(1, Math.round(1 / frameSec));
+  const smooth = new Float32Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) {
+    acc += rms[i];
+    if (i >= smoothN) acc -= rms[i - smoothN];
+    smooth[i] = acc / Math.min(i + 1, smoothN);
+  }
+  const sorted = Array.from(smooth).sort((a, b) => a - b);
+  const p75 = sorted[Math.floor(sorted.length * 0.75)] || 0;
+  const floor = p75 * REST_ENERGY_RATIO;
+
+  return onsets.filter((o) => {
+    const f = Math.min(n - 1, Math.round(o.time / frameSec));
+    return smooth[f] >= floor;
+  });
+}
+
+/** Reaction-time min gap plus a hard cap per rolling window. */
+function densityFilter(onsets: Onset[], duration: number): Onset[] {
   const usable = onsets
     .filter((o) => o.time >= FIRST_EVENT_AT && o.time <= duration - 1.5)
     .sort((a, b) => b.strength - a.strength);
 
   const kept: Onset[] = [];
   for (const o of usable) {
-    if (kept.every((k) => Math.abs(k.time - o.time) >= MIN_GAP)) kept.push(o);
+    if (!kept.every((k) => Math.abs(k.time - o.time) >= MIN_GAP)) continue;
+    const windowCount = kept.filter((k) => Math.abs(k.time - o.time) <= WINDOW_SEC / 2).length;
+    if (windowCount >= MAX_PER_WINDOW) continue;
+    kept.push(o);
   }
-  kept.sort((a, b) => a.time - b.time);
-
-  return kept.map((o, i) => ({ time: o.time, type: pickType(o, i) }));
+  return kept.sort((a, b) => a.time - b.time);
 }
 
-function pickType(o: Onset, index: number): ObstacleType {
-  if (o.band === 'low') {
-    // strong kicks become walls, ordinary kicks become pits
-    if (o.strength > 0.75) return index % 2 === 0 ? 'hardWall' : 'breakableWall';
-    return 'pit';
+/**
+ * Songs with constant loudness never trigger the energy gate, so breathing
+ * room is guaranteed structurally: in every REST_EVERY-second window that
+ * lacks a natural pause, delete the weakest REST_LEN-second span of events.
+ * The player gets empty road, and it lands where the music matters least.
+ */
+function carveRests(onsets: Onset[], duration: number): Onset[] {
+  const removed = new Set<Onset>();
+  for (let w = FIRST_EVENT_AT; w < duration; w += REST_EVERY) {
+    const inWindow = onsets.filter((o) => o.time >= w && o.time < w + REST_EVERY);
+    if (inWindow.length === 0) continue;
+
+    // natural gap already present?
+    const times = [w, ...inWindow.map((o) => o.time), w + REST_EVERY];
+    let hasGap = false;
+    for (let i = 1; i < times.length; i++) {
+      if (times[i] - times[i - 1] >= REST_LEN) hasGap = true;
+    }
+    if (hasGap) continue;
+
+    let bestStart = w;
+    let bestCost = Infinity;
+    for (let s = w; s + REST_LEN <= w + REST_EVERY; s += 0.5) {
+      const cost = inWindow
+        .filter((o) => o.time >= s && o.time < s + REST_LEN)
+        .reduce((sum, o) => sum + o.strength, 0);
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestStart = s;
+      }
+    }
+    for (const o of inWindow) {
+      if (o.time >= bestStart && o.time < bestStart + REST_LEN) removed.add(o);
+    }
   }
-  if (o.strength > 0.8) return 'zombie';
-  return 'branch';
+  return onsets.filter((o) => !removed.has(o));
+}
+
+/**
+ * Section-based typing: consecutive events between pauses form a musical
+ * phrase, and each phrase gets a movement flavor — duck phrases (mid-band
+ * heavy: slide under branch chains), jump phrases (bass heavy: pits, walls,
+ * stompable zombies), or mixed. Without this, dense songs collapse into
+ * all-jump levels because a duck is impossible mid-jump-chain.
+ */
+function assignTypes(onsets: Onset[]): BeatEvent[] {
+  const rank = (band: 'low' | 'mid') => {
+    const strengths = onsets
+      .filter((o) => o.band === band)
+      .map((o) => o.strength)
+      .sort((a, b) => a - b);
+    return (s: number) =>
+      strengths.length ? strengths.findIndex((v) => v >= s) / strengths.length : 0;
+  };
+  const lowRank = rank('low');
+  const midRank = rank('mid');
+
+  const events: BeatEvent[] = [];
+  let i = 0;
+  let sectionIdx = 0;
+  while (i < onsets.length) {
+    let end = i + 1;
+    while (
+      end < onsets.length &&
+      end - i < 10 &&
+      onsets[end].time - onsets[end - 1].time < 1.5
+    ) {
+      end++;
+    }
+    const section = onsets.slice(i, end);
+    const midShare = section.filter((o) => o.band === 'mid').length / section.length;
+    // force alternation so bass-heavy songs still get duck phrases
+    const mode: 'duck' | 'jump' | 'mixed' =
+      midShare >= 0.55 || sectionIdx % 3 === 2 ? 'duck' : midShare <= 0.25 ? 'jump' : 'mixed';
+
+    let pitStreak = 0;
+    section.forEach((o, j) => {
+      let type: ObstacleType;
+      if (mode === 'duck') {
+        type = o.band === 'mid' && midRank(o.strength) > 0.9 ? 'zombie' : 'branch';
+      } else if (o.band === 'low') {
+        const r = lowRank(o.strength);
+        if (r > 0.8) type = (i + j) % 2 === 0 ? 'hardWall' : 'breakableWall';
+        else type = 'pit';
+      } else {
+        const r = midRank(o.strength);
+        if (r > 0.85) type = 'zombie';
+        else type = mode === 'mixed' ? 'branch' : 'pit';
+      }
+      // long pit runs get a stomp target to break monotony
+      if (type === 'pit' && ++pitStreak % 4 === 0) type = 'zombie';
+      if (type !== 'pit') pitStreak = 0;
+      events.push({ time: o.time, type });
+    });
+    i = end;
+    sectionIdx++;
+  }
+  return events;
+}
+
+/**
+ * No unwinnable sequences. An obstacle that forces a jump leaves the hero
+ * airborne for up to JUMP_RECOVERY seconds; inside that window:
+ *  - a branch (duck) is physically unclearable → becomes a zombie, which
+ *    self-solves airborne (falling onto it = stomp) and grounded (kick),
+ *    so the musical hit is kept without unfairness;
+ *  - a wall demands full jump height the hero may no longer have → becomes
+ *    a pit, which an airborne hero simply sails over.
+ */
+function makeFeasible(events: BeatEvent[]): void {
+  const forcesJump = (t: ObstacleType) => t === 'pit' || t === 'hardWall' || t === 'breakableWall';
+  let airborneUntil = -Infinity;
+  for (const e of events) {
+    if (e.time < airborneUntil) {
+      if (e.type === 'branch') e.type = 'zombie';
+      else if (e.type === 'hardWall' || e.type === 'breakableWall') e.type = 'pit';
+    }
+    if (forcesJump(e.type)) {
+      airborneUntil = e.time + JUMP_RECOVERY;
+    }
+  }
 }
