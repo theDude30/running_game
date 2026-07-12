@@ -28,12 +28,17 @@ export const RATING_WINDOW = { perfect: 0.07, good: 0.14, ok: 0.25 } as const;
 export const BRANCH_LAND_TOLERANCE = 14; // px snap tolerance when landing on top
 
 // Flying mode
-export const COMBO_TO_FLY = 3; // consecutive clears (any rating) that trigger flight; repeats every N
+export const COMBO_TO_FLY = 12; // consecutive clears (any rating) that trigger flight; repeats every N
 export const FLIGHT_DURATION = 20; // seconds
 export const FLY_GRACE_PERIOD = 2.5; // obstacle-free seconds at the start of each flight, to get a feel for the controls
-export const FLY_TOP = 70; // highest altitude the hero can reach
-export const FLY_BAND_HIGH = 170; // "climb" safe-zone center (wall obstacles)
-export const FLY_BAND_LOW = 350; // "dive" safe-zone center (dragon obstacles)
+// Highest altitude the hero can reach. Deliberately close enough to
+// FLY_BAND_HIGH that a high-danger dragon's zone still reaches a hero
+// pinned at the ceiling (see the FLY_TOP math note by FLY_BAND_HIGH below)
+// — sitting at the very top must stay dangerous against dragons flying
+// high, or "just hold thrust forever" becomes a free win.
+export const FLY_TOP = 136;
+export const FLY_BAND_HIGH = 170; // "climb" safe-zone center
+export const FLY_BAND_LOW = 350; // "dive" safe-zone center
 export const FLY_BAND_TOLERANCE = 60; // how far the hero's CENTER may wander from a band center and stay safe
 export const FLY_HITBOX_HEIGHT = 28; // collision-only height while flying (visual stays HERO_HEIGHT — forgiving hitbox)
 export const FLY_UP_ACCEL = 2200; // upward acceleration while thrust is held
