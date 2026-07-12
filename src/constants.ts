@@ -73,13 +73,22 @@ export const WEATHER_BEAT_AVG_LERP = 0.06;
 export const WEATHER_BEAT_RATIO = 1.5;
 export const WEATHER_BEAT_MIN_ENERGY = 0.12;
 export const WEATHER_BEAT_MIN_GAP = 0.12; // seconds, however loud
-// Visuals
+// Visuals — rain (minor-key/moody tracks)
 export const WEATHER_COOL_COLOR = 0xbfe9ff; // high spectral centroid (bright treble): icy blue/white
 export const WEATHER_WARM_COLOR = 0x6b3fa0; // low spectral centroid (bass-heavy): deep purple/grey
-export const WEATHER_MIN_FREQUENCY_MS = 18; // particle emission interval at max bass (dense burst)
-export const WEATHER_MAX_FREQUENCY_MS = 260; // particle emission interval at rest (light drizzle)
-export const WEATHER_MIN_SPEED = 220;
-export const WEATHER_MAX_SPEED = 620;
+export const WEATHER_RAIN_MIN_FREQUENCY_MS = 18; // emission interval at max bass (dense burst)
+export const WEATHER_RAIN_MAX_FREQUENCY_MS = 260; // emission interval at rest (light drizzle)
+export const WEATHER_RAIN_MIN_SPEED = 220;
+export const WEATHER_RAIN_MAX_SPEED = 620;
+export const WEATHER_RAIN_LIFESPAN = 1400;
+// Visuals — snow (major-key/calm, slow tracks). Falls slower and drifts
+// rather than streaking, and stays a fixed pale color regardless of pitch.
+export const WEATHER_SNOW_COLOR = 0xf3f9ff;
+export const WEATHER_SNOW_MIN_FREQUENCY_MS = 30;
+export const WEATHER_SNOW_MAX_FREQUENCY_MS = 340;
+export const WEATHER_SNOW_MIN_SPEED = 40;
+export const WEATHER_SNOW_MAX_SPEED = 160;
+export const WEATHER_SNOW_LIFESPAN = 3200;
 export const WEATHER_FOG_MAX_ALPHA = 0.45;
 
 export const COLORS = {

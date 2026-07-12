@@ -24,6 +24,23 @@ const WINDOW_SEC = 4; // …per this many seconds
 const JUMP_RECOVERY = 0.75; // seconds the hero may be airborne after a forced jump
 const REST_EVERY = 18; // guarantee an empty stretch at least this often…
 const REST_LEN = 2.8; // …of at least this length (carved at the weakest spot)
+// Chroma (key/mode) analysis needs its own, much larger FFT window than
+// onset detection: WIN's ~43Hz bin resolution is coarser than a semitone at
+// these frequencies (a semitone at C4 is ~15Hz wide), so pitch-class energy
+// bleeds across neighboring bins and corrupts the profile. A wide window is
+// fine here since we only need one whole-track-averaged profile, not fine
+// time resolution — verified empirically: 1024 scatters a pure C-minor
+// triad's energy across 5+ pitch classes, 8192 (~5Hz/bin) resolves it cleanly.
+const CHROMA_WIN = 8192;
+const CHROMA_MIN_HZ = 80; // ignore sub-bass rumble/noise when building the chroma profile
+const CHROMA_MAX_HZ = 5000; // ignore percussive/noise energy above the tonal range
+const HAPPY_MIN_BPM = 110; // major-key tracks at/above this tempo read as upbeat, not just "not sad"
+
+// Krumhansl-Kessler key profiles: empirically measured perceived "fit" of
+// each scale degree to a major/minor tonic, the standard tool for audio key
+// detection. Index 0 = the tonic itself.
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
 export interface AnalysisProgress {
   stage: 'analyzing' | 'building';
@@ -102,7 +119,83 @@ export async function generateBeatmap(
   const breathing = carveRests(spaced, duration);
   const events = assignTypes(breathing);
   makeFeasible(events);
-  return { name, bpm, duration, events };
+  const chroma = computeChroma(channel, sampleRate);
+  const weatherType = pickWeatherType(chroma, bpm);
+  return { name, bpm, duration, weatherType, events };
+}
+
+/** Whole-track-averaged 12-bin chroma profile for key/mode detection. */
+function computeChroma(channel: Float32Array, sampleRate: number): Float32Array {
+  const chroma = new Float32Array(12);
+  if (channel.length < CHROMA_WIN) return chroma;
+
+  const fft = new FFT(CHROMA_WIN);
+  const binHz = sampleRate / CHROMA_WIN;
+  const minBin = Math.max(1, Math.round(CHROMA_MIN_HZ / binHz));
+  const maxBin = Math.min(CHROMA_WIN / 2 - 1, Math.round(CHROMA_MAX_HZ / binHz));
+  const hann = new Float32Array(CHROMA_WIN);
+  for (let i = 0; i < CHROMA_WIN; i++) hann[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (CHROMA_WIN - 1)));
+  const windowed = new Float32Array(CHROMA_WIN);
+  const mags = new Float32Array(CHROMA_WIN / 2);
+
+  const frameCount = Math.floor((channel.length - CHROMA_WIN) / CHROMA_WIN);
+  for (let f = 0; f < frameCount; f++) {
+    const off = f * CHROMA_WIN;
+    for (let i = 0; i < CHROMA_WIN; i++) windowed[i] = channel[off + i] * hann[i];
+    fft.magnitudes(windowed, mags);
+    for (let b = minBin; b <= maxBin; b++) {
+      const freq = b * binHz;
+      const pitchClass = ((Math.round(12 * Math.log2(freq / 440)) % 12) + 12) % 12;
+      chroma[pitchClass] += mags[b];
+    }
+  }
+  return chroma;
+}
+
+/**
+ * Major vs. minor from the track's averaged chroma profile, correlated
+ * against the Krumhansl-Kessler tonal profiles at all 12 possible tonics —
+ * whichever mode's best-fitting tonic correlates higher wins. This is the
+ * standard MIR key-detection technique, and mode (not the specific tonic)
+ * is the closest audio-only proxy for "happy" (major) vs. "sad" (minor).
+ */
+function detectMode(chroma: Float32Array): 'major' | 'minor' {
+  let total = 0;
+  for (let i = 0; i < 12; i++) total += chroma[i];
+  if (total === 0) return 'major';
+  const normalized = Array.from(chroma, (v) => v / total);
+
+  let bestMajor = -Infinity;
+  let bestMinor = -Infinity;
+  for (let tonic = 0; tonic < 12; tonic++) {
+    bestMajor = Math.max(bestMajor, correlate(normalized, MAJOR_PROFILE, tonic));
+    bestMinor = Math.max(bestMinor, correlate(normalized, MINOR_PROFILE, tonic));
+  }
+  return bestMajor >= bestMinor ? 'major' : 'minor';
+}
+
+/** Pearson correlation between the chroma vector and a key profile rotated to `tonic`. */
+function correlate(chroma: number[], profile: number[], tonic: number): number {
+  const rotated = profile.map((_, i) => profile[(i - tonic + 12) % 12]);
+  const meanA = chroma.reduce((a, b) => a + b, 0) / 12;
+  const meanB = rotated.reduce((a, b) => a + b, 0) / 12;
+  let num = 0;
+  let denomA = 0;
+  let denomB = 0;
+  for (let i = 0; i < 12; i++) {
+    const da = chroma[i] - meanA;
+    const db = rotated[i] - meanB;
+    num += da * db;
+    denomA += da * da;
+    denomB += db * db;
+  }
+  const denom = Math.sqrt(denomA * denomB);
+  return denom > 0 ? num / denom : 0;
+}
+
+function pickWeatherType(chroma: Float32Array, bpm: number): 'none' | 'rain' | 'snow' {
+  if (detectMode(chroma) === 'minor') return 'rain'; // moody/sad -> rain
+  return bpm >= HAPPY_MIN_BPM ? 'none' : 'snow'; // major+fast (happy) -> clear; major+slow (calm) -> snow
 }
 
 /** Adaptive-threshold local-maximum peak picking on a flux envelope. */

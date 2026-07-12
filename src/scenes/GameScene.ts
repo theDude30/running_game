@@ -83,7 +83,7 @@ export class GameScene extends Phaser.Scene {
       const clock = new SmoothClock(ctx);
       this.conductor = new Conductor(this.beatmap.bpm, () => clock.now(), false);
       this.weatherAnalyzer = new WeatherAnalyzer(this.analyserNode, ctx.sampleRate, () => this.conductor.songTime);
-      this.weatherSystem = new WeatherSystem(this);
+      this.weatherSystem = new WeatherSystem(this, this.beatmap.weatherType);
     } else {
       this.audioCtx = null;
       this.audioSource = null;

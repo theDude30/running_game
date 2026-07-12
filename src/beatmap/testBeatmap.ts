@@ -54,7 +54,7 @@ function build(): Beatmap {
   section(events, 88, 2, ['pit', 'branch', 'pit']);
 
   events.sort((a, b) => a.time - b.time);
-  return { name: 'Test Track', bpm: BPM, duration: 96 * BEAT, events };
+  return { name: 'Test Track', bpm: BPM, duration: 96 * BEAT, weatherType: 'none', events };
 }
 
 export const testBeatmap: Beatmap = build();
