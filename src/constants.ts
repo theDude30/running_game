@@ -104,4 +104,7 @@ export const COLORS = {
   zombie: 0x15803d,
   zombieEyes: 0xdc2626,
   flyDragon: 0xdc2626,
+  lava: 0xc2410c,
+  lavaGlow: 0xfacc15,
+  lavaRock: 0x3f1d0f,
 } as const;

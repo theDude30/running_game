@@ -1,4 +1,4 @@
-export type ObstacleType = 'pit' | 'branch' | 'breakableWall' | 'hardWall' | 'zombie';
+export type ObstacleType = 'pit' | 'branch' | 'breakableWall' | 'hardWall' | 'zombie' | 'lava';
 
 export interface BeatEvent {
   /** Seconds into the song when the obstacle reaches the hero. */

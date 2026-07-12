@@ -38,7 +38,7 @@ function opposite(band: Band): Band {
  * rest-carved event stream as the ground game instead of a second pass.
  */
 function eventToBand(type: ObstacleType): Band {
-  if (type === 'pit' || type === 'hardWall' || type === 'breakableWall') return 'high';
+  if (type === 'pit' || type === 'hardWall' || type === 'breakableWall' || type === 'lava') return 'high';
   return 'low';
 }
 

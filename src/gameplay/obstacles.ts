@@ -11,6 +11,8 @@ interface Part {
   w: number;
   h: number;
   color: number;
+  /** Alpha-pulses over time (e.g. glowing lava) instead of sitting static. */
+  pulse?: boolean;
 }
 
 interface ObstacleDef {
@@ -68,6 +70,18 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
     kickable: true,
     stompable: true,
   },
+  lava: {
+    width: 130,
+    parts: [
+      { dx: 0, cy: GROUND_TOP + 35, w: 130, h: 70, color: COLORS.lava },
+      { dx: -38, cy: GROUND_TOP + 8, w: 16, h: 12, color: COLORS.lavaRock },
+      { dx: 36, cy: GROUND_TOP + 6, w: 14, h: 12, color: COLORS.lavaRock },
+      { dx: 0, cy: GROUND_TOP + 18, w: 108, h: 12, color: COLORS.lavaGlow, pulse: true },
+    ],
+    collide: { dx: 0, cy: GROUND_TOP + 10, w: 118, h: 20 },
+    requiredActions: ['jump'],
+    groundHazard: true,
+  },
 };
 
 export class Obstacle {
@@ -84,6 +98,7 @@ export class Obstacle {
   ghosted = false;
 
   private readonly container: Phaser.GameObjects.Container;
+  private readonly pulseParts: Phaser.GameObjects.Rectangle[];
   /**
    * Rhythm rule: at exactly `hitTime` the collision box's leading edge meets
    * the hero's front — acting ON the beat always clears, acting late gets
@@ -100,6 +115,7 @@ export class Obstacle {
     const rects = this.def.parts.map((p) =>
       scene.add.rectangle(p.dx, p.cy, p.w, p.h, p.color),
     );
+    this.pulseParts = rects.filter((_, i) => this.def.parts[i].pulse);
     this.container = scene.add.container(-1000, 0, rects);
     this.container.setVisible(false);
   }
@@ -117,6 +133,10 @@ export class Obstacle {
     const x = HERO_X + this.beatAlign + (this.hitTime - t) * SCROLL_SPEED;
     this.container.x = x;
     this.container.setVisible(x > -150 && x < GAME_WIDTH + 250 && !this.destroyed);
+    if (this.pulseParts.length) {
+      const alpha = 0.6 + Math.sin(t * 6) * 0.3;
+      for (const p of this.pulseParts) p.setAlpha(alpha);
+    }
   }
 
   get collideBox(): Box {

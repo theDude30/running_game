@@ -412,23 +412,30 @@ function assignTypes(onsets: Onset[]): BeatEvent[] {
     const mode: 'duck' | 'jump' | 'mixed' =
       midShare >= 0.55 || sectionIdx % 3 === 2 ? 'duck' : midShare <= 0.25 ? 'jump' : 'mixed';
 
-    let pitStreak = 0;
+    let hazardStreak = 0;
     section.forEach((o, j) => {
       let type: ObstacleType;
       if (mode === 'duck') {
-        type = o.band === 'mid' && midRank(o.strength) > 0.9 ? 'zombie' : 'branch';
+        type = o.band === 'mid' && midRank(o.strength) > 0.6 ? 'zombie' : 'branch';
       } else if (o.band === 'low') {
         const r = lowRank(o.strength);
-        if (r > 0.8) type = (i + j) % 2 === 0 ? 'hardWall' : 'breakableWall';
+        if (r > 0.85) {
+          // top-tier bass hits: cycle through walls and lava, not walls alone
+          const cycle = (i + j) % 3;
+          type = cycle === 0 ? 'hardWall' : cycle === 1 ? 'breakableWall' : 'lava';
+        } else if (r > 0.55) type = 'lava';
         else type = 'pit';
       } else {
         const r = midRank(o.strength);
-        if (r > 0.85) type = 'zombie';
+        if (r > 0.6) type = 'zombie';
         else type = mode === 'mixed' ? 'branch' : 'pit';
       }
-      // long pit runs get a stomp target to break monotony
-      if (type === 'pit' && ++pitStreak % 4 === 0) type = 'zombie';
-      if (type !== 'pit') pitStreak = 0;
+      // long runs of ground hazards get a stomp target to break monotony —
+      // pit and lava both count, so lava soaking up former pits doesn't
+      // starve this of zombies
+      const isGroundHazard = type === 'pit' || type === 'lava';
+      if (isGroundHazard && ++hazardStreak % 3 === 0) type = 'zombie';
+      if (!isGroundHazard) hazardStreak = 0;
       events.push({ time: o.time, type });
     });
     i = end;
@@ -447,7 +454,8 @@ function assignTypes(onsets: Onset[]): BeatEvent[] {
  *    a pit, which an airborne hero simply sails over.
  */
 function makeFeasible(events: BeatEvent[]): void {
-  const forcesJump = (t: ObstacleType) => t === 'pit' || t === 'hardWall' || t === 'breakableWall';
+  const forcesJump = (t: ObstacleType) =>
+    t === 'pit' || t === 'hardWall' || t === 'breakableWall' || t === 'lava';
   let airborneUntil = -Infinity;
   for (const e of events) {
     if (e.time < airborneUntil) {

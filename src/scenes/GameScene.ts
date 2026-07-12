@@ -8,6 +8,7 @@ import {
   GAME_HEIGHT,
   GAME_WIDTH,
   GROUND_TOP,
+  HERO_WIDTH,
   HERO_X,
   RATING_WINDOW,
 } from '../constants';
@@ -336,7 +337,12 @@ export class GameScene extends Phaser.Scene {
       if (o.done) continue;
       const topY = o.platformTopY;
       if (topY === null) continue;
-      const halfW = o.def.width / 2;
+      // Match the actual collision window (boxesOverlap effectively extends
+      // by half the hero's own width too), not just the obstacle's own
+      // width — otherwise there's a dead zone at the edges where a hit can
+      // still register even though this check no longer considers the hero
+      // "landable", which a double jump's altered descent timing can expose.
+      const halfW = o.def.width / 2 + HERO_WIDTH / 2;
       if (Math.abs(o.x - HERO_X) <= halfW && heroBottom <= topY + BRANCH_LAND_TOLERANCE) {
         return topY;
       }
