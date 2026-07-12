@@ -51,7 +51,7 @@ export class ResultsScene extends Phaser.Scene {
     this.tweens.add({ targets: again, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 });
 
     this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 65, 'M — back to menu', {
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 65, 'M — change music', {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: '#8888aa',
@@ -60,6 +60,6 @@ export class ResultsScene extends Phaser.Scene {
 
     this.input.once('pointerdown', () => this.scene.start('Game'));
     this.input.keyboard?.once('keydown-SPACE', () => this.scene.start('Game'));
-    this.input.keyboard?.once('keydown-M', () => this.scene.start('Menu'));
+    this.input.keyboard?.once('keydown-M', () => this.scene.start('SongSelect'));
   }
 }

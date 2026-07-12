@@ -1,18 +1,30 @@
+/** Monotonic clock in seconds. */
+export type TimeSource = () => number;
+
 /**
  * Master clock for the whole game. Everything that moves is positioned from
  * `songTime`, never from frame deltas, so the level can not drift from the
- * music. Phase 1 uses a silent performance.now()-based metronome; Phase 2
- * swaps the time source for AudioContext.currentTime without changing any
- * consumer code.
+ * music.
+ *
+ * Two modes:
+ *  - wall-clock (silent metronome): performance.now()-based; render stalls
+ *    must be compensated so the level doesn't teleport.
+ *  - audio: AudioContext.currentTime-based; the clock IS the music, so it is
+ *    never compensated (suspending the context freezes it instead).
  */
 export class Conductor {
-  private startAt = 0; // epoch (in now() seconds) where songTime === 0
+  private startAt = 0; // epoch (in timeSource seconds) where songTime === 0
   private pausedAt: number | null = null;
 
-  constructor(readonly bpm: number) {}
+  constructor(
+    readonly bpm: number,
+    private readonly timeSource: TimeSource = () => performance.now() / 1000,
+    /** Whether render-stall compensation is allowed (wall-clock mode only). */
+    readonly compensable = true,
+  ) {}
 
   private now(): number {
-    return performance.now() / 1000;
+    return this.timeSource();
   }
 
   /** Begin the track `delay` seconds from now (used for the countdown). */
@@ -43,19 +55,14 @@ export class Conductor {
 
   /**
    * Shift the clock forward by `seconds` to swallow a render stall (tab
-   * throttling, app switch, GC pause). Keeps songTime continuous with the
-   * frames the player actually saw instead of teleporting the level.
+   * throttling, app switch, GC pause). No-op in audio mode: the music kept
+   * playing, so the clock must not move.
    */
   compensate(seconds: number): void {
-    this.startAt += seconds;
+    if (this.compensable) this.startAt += seconds;
   }
 
   get beatDuration(): number {
     return 60 / this.bpm;
-  }
-
-  /** Whole beats elapsed since the song started (negative pre-start). */
-  get beatsElapsed(): number {
-    return Math.floor(this.songTime / this.beatDuration);
   }
 }

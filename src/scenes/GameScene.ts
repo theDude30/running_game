@@ -8,8 +8,9 @@ import {
   RATING_WINDOW,
 } from '../constants';
 import { Conductor } from '../audio/Conductor';
+import { getAudioContext } from '../audio/sources';
 import { testBeatmap } from '../beatmap/testBeatmap';
-import type { Beatmap } from '../beatmap/types';
+import type { Beatmap, RunConfig } from '../beatmap/types';
 import { Hero, boxesOverlap } from '../gameplay/Hero';
 import { Obstacle, createObstacles, type HeroAction } from '../gameplay/obstacles';
 import { Scoring } from '../gameplay/Scoring';
@@ -41,14 +42,31 @@ export class GameScene extends Phaser.Scene {
   private pauseOverlay!: Phaser.GameObjects.Container;
   private lastBeat = -Infinity;
   private lastFrameAt = 0;
+  private audioCtx: AudioContext | null = null;
+  private audioSource: AudioBufferSourceNode | null = null;
 
   constructor() {
     super('Game');
   }
 
   create(): void {
-    this.beatmap = testBeatmap;
-    this.conductor = new Conductor(this.beatmap.bpm);
+    const config = this.registry.get('runConfig') as RunConfig | undefined;
+    this.beatmap = config?.beatmap ?? testBeatmap;
+
+    if (config?.audioBuffer) {
+      // Real music: the AudioContext clock IS the game clock.
+      const ctx = getAudioContext();
+      this.audioCtx = ctx;
+      this.audioSource = ctx.createBufferSource();
+      this.audioSource.buffer = config.audioBuffer;
+      this.audioSource.connect(ctx.destination);
+      this.conductor = new Conductor(this.beatmap.bpm, () => ctx.currentTime, false);
+    } else {
+      this.audioCtx = null;
+      this.audioSource = null;
+      this.conductor = new Conductor(this.beatmap.bpm);
+    }
+
     this.scoring = new Scoring();
     this.phase = 'countdown';
     this.lastBeat = -Infinity;
@@ -119,8 +137,22 @@ export class GameScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.HIDDEN, onHidden);
     });
 
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.audioSource) {
+        try {
+          this.audioSource.stop();
+        } catch {
+          /* already ended */
+        }
+        this.audioSource.disconnect();
+      }
+      if (this.audioCtx?.state === 'suspended') void this.audioCtx.resume();
+    });
+
     this.lastFrameAt = performance.now() / 1000;
     this.conductor.startIn(COUNTDOWN);
+    // Music begins the instant the countdown hits zero
+    this.audioSource?.start(this.audioCtx!.currentTime + COUNTDOWN);
   }
 
   private buildPauseOverlay(): void {
@@ -139,10 +171,12 @@ export class GameScene extends Phaser.Scene {
   private togglePause(): void {
     if (this.phase === 'finished') return;
     if (this.conductor.paused) {
+      void this.audioCtx?.resume();
       this.conductor.resume();
       this.pauseOverlay.setVisible(false);
     } else {
       this.conductor.pause();
+      void this.audioCtx?.suspend(); // freezes the audio clock AND the music
       this.pauseOverlay.setVisible(true);
     }
   }

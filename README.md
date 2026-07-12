@@ -5,11 +5,17 @@
 ```bash
 npm install
 npm run dev          # dev server → http://localhost:5180
+npm run dev:audio    # yt-dlp extraction server (needed for "From YouTube"; brew install yt-dlp)
 npm run build        # typecheck + production build → dist/
 npm run lint         # eslint
 npm run cap:android  # build web, sync into android/, open Android Studio
 npm run cap:ios      # build web, sync into ios/, open Xcode
 ```
+
+Playing music: Menu → Select Music → paste a YouTube URL (requires `npm run dev:audio`
+running), load a local audio file, or use the silent test track. Audio is decoded and
+analyzed in the browser (spectral-flux onset detection, ~150ms per minute of audio);
+the level spawns from the detected beats and stays locked to the Web Audio clock.
 
 Native build prerequisites (one-time machine setup):
 - **Android**: install [Android Studio](https://developer.android.com/studio) (brings the

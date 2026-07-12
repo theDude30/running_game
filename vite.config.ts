@@ -8,6 +8,10 @@ export default defineConfig({
     host: true,
     port: 5180,
     strictPort: true,
+    proxy: {
+      // dev-only yt-dlp extraction server (npm run dev:audio)
+      '/api': 'http://localhost:5181',
+    },
   },
   build: {
     target: 'es2020',

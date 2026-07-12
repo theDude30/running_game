@@ -14,3 +14,10 @@ export interface Beatmap {
   /** Sorted by time ascending. */
   events: BeatEvent[];
 }
+
+/** Everything GameScene needs for a run; stored in the game registry. */
+export interface RunConfig {
+  beatmap: Beatmap;
+  /** Undefined = silent metronome (test track). */
+  audioBuffer?: AudioBuffer;
+}

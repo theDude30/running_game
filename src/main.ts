@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from './constants';
 import { MenuScene } from './scenes/MenuScene';
+import { SongSelectScene } from './scenes/SongSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { ResultsScene } from './scenes/ResultsScene';
 
@@ -21,10 +22,17 @@ const game = new Phaser.Game({
     // duck-hold + jump tap + kick tap can be simultaneous on touch
     activePointers: 3,
   },
-  scene: [MenuScene, GameScene, ResultsScene],
+  dom: {
+    createContainer: true, // for the YouTube URL input overlay
+  },
+  scene: [MenuScene, SongSelectScene, GameScene, ResultsScene],
 });
 
 if (import.meta.env.DEV) {
-  // dev-console access for debugging: window.__game
-  (window as unknown as Record<string, unknown>).__game = game;
+  // dev-console access for debugging: window.__game / window.__generateBeatmap
+  const w = window as unknown as Record<string, unknown>;
+  w.__game = game;
+  void import('./beatmap/generate').then((m) => {
+    w.__generateBeatmap = m.generateBeatmap;
+  });
 }

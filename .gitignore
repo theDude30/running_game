@@ -15,3 +15,6 @@ android/local.properties
 # misc
 .DS_Store
 *.log
+
+# yt-dlp download cache (dev only)
+server/.cache/
