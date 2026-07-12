@@ -3,23 +3,31 @@ import { GAME_HEIGHT, GAME_WIDTH } from '../constants';
 
 /**
  * Unified keyboard + touch input. Emits:
- *   'jump'            — space / up / tap anywhere outside control pads
+ *   'jump'            — space / up / tap anywhere outside control pads (edge-triggered)
+ *   'thrust' (boolean) — same keys/area, held state (flying mode's climb control)
  *   'duck' (boolean)  — down arrow held / left pad held
  *   'kick'            — X / F / right kick pad
  */
 export class InputController extends Phaser.Events.EventEmitter {
   private zones: { x: number; y: number; r: number }[] = [];
   private duckPointerId: number | null = null;
+  private thrustPointerId: number | null = null;
 
   constructor(scene: Phaser.Scene) {
     super();
 
     const kb = scene.input.keyboard;
-    const onJumpKey = (e: KeyboardEvent) => {
-      if (!e.repeat) this.emit('jump');
+    const onJumpKeyDown = (e: KeyboardEvent) => {
+      if (!e.repeat) {
+        this.emit('jump');
+        this.emit('thrust', true);
+      }
     };
-    kb?.on('keydown-SPACE', onJumpKey);
-    kb?.on('keydown-UP', onJumpKey);
+    const onJumpKeyUp = () => this.emit('thrust', false);
+    kb?.on('keydown-SPACE', onJumpKeyDown);
+    kb?.on('keydown-UP', onJumpKeyDown);
+    kb?.on('keyup-SPACE', onJumpKeyUp);
+    kb?.on('keyup-UP', onJumpKeyUp);
     kb?.on('keydown-DOWN', (e: KeyboardEvent) => {
       if (!e.repeat) this.emit('duck', true);
     });
@@ -52,12 +60,18 @@ export class InputController extends Phaser.Events.EventEmitter {
         return;
       }
       if (this.inExcluded(p)) return;
+      this.thrustPointerId = p.id;
       this.emit('jump');
+      this.emit('thrust', true);
     });
     scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
       if (p.id === this.duckPointerId) {
         this.duckPointerId = null;
         this.emit('duck', false);
+      }
+      if (p.id === this.thrustPointerId) {
+        this.thrustPointerId = null;
+        this.emit('thrust', false);
       }
     });
   }

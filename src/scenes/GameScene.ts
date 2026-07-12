@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import {
+  BRANCH_LAND_TOLERANCE,
   COLORS,
+  COMBO_TO_FLY,
+  FLIGHT_DURATION,
   GAME_HEIGHT,
   GAME_WIDTH,
   GROUND_TOP,
@@ -14,7 +17,8 @@ import { testBeatmap } from '../beatmap/testBeatmap';
 import type { Beatmap, RunConfig } from '../beatmap/types';
 import { Hero, boxesOverlap } from '../gameplay/Hero';
 import { Obstacle, createObstacles, type HeroAction } from '../gameplay/obstacles';
-import { Scoring } from '../gameplay/Scoring';
+import { createFlyingObstacles, FlyingObstacle } from '../gameplay/flyingObstacles';
+import { Scoring, type Rating } from '../gameplay/Scoring';
 import { InputController } from '../input/InputController';
 
 const COUNTDOWN = 5;
@@ -25,6 +29,7 @@ const RATING_COLORS: Record<string, string> = {
 };
 
 type PlayPhase = 'countdown' | 'playing' | 'finished';
+type HeroMode = 'ground' | 'flying';
 
 export class GameScene extends Phaser.Scene {
   private conductor!: Conductor;
@@ -33,6 +38,9 @@ export class GameScene extends Phaser.Scene {
   private obstacles!: Obstacle[];
   private scoring!: Scoring;
   private phase: PlayPhase = 'countdown';
+  private heroMode: HeroMode = 'ground';
+  private flightEndsAt = 0;
+  private flyingObstacles: FlyingObstacle[] = [];
 
   private scoreText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
@@ -41,6 +49,8 @@ export class GameScene extends Phaser.Scene {
   private beatDot!: Phaser.GameObjects.Arc;
   private groundFlash!: Phaser.GameObjects.Rectangle;
   private pauseOverlay!: Phaser.GameObjects.Container;
+  private flyBannerText!: Phaser.GameObjects.Text;
+  private flyTimerText!: Phaser.GameObjects.Text;
   private lastBeat = -Infinity;
   private lastFrameAt = 0;
   private audioCtx: AudioContext | null = null;
@@ -71,6 +81,8 @@ export class GameScene extends Phaser.Scene {
 
     this.scoring = new Scoring();
     this.phase = 'countdown';
+    this.heroMode = 'ground';
+    this.flyingObstacles = [];
     this.lastBeat = -Infinity;
 
     // World
@@ -109,11 +121,29 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_WIDTH / 2, 240, '', { fontFamily: 'monospace', fontSize: '96px', color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(100);
+    this.flyBannerText = this.add
+      .text(GAME_WIDTH / 2, 90, '✈ FLYING! hold to climb, release to dive', {
+        fontFamily: 'monospace',
+        fontSize: '20px',
+        color: '#38bdf8',
+      })
+      .setOrigin(0.5)
+      .setDepth(100)
+      .setVisible(false);
+    this.flyTimerText = this.add
+      .text(GAME_WIDTH / 2, 120, '', { fontFamily: 'monospace', fontSize: '16px', color: '#38bdf8' })
+      .setOrigin(0.5)
+      .setDepth(100)
+      .setVisible(false);
 
     // Input
     const input = new InputController(this);
     input.on('jump', () => this.onAction('jump'));
+    input.on('thrust', (on: boolean) => {
+      if (this.heroMode === 'flying') this.hero.setThrust(on);
+    });
     input.on('duck', (on: boolean) => {
+      if (this.heroMode === 'flying') return;
       this.hero.setDuck(on);
       if (on) this.registerActionTiming('duck');
     });
@@ -195,7 +225,7 @@ export class GameScene extends Phaser.Scene {
       this.togglePause();
       return;
     }
-    if (this.phase !== 'playing') return;
+    if (this.phase !== 'playing' || this.heroMode === 'flying') return;
     const t = this.conductor.songTime;
     if (action === 'jump') {
       if (this.hero.jump()) this.registerActionTiming('jump');
@@ -243,11 +273,27 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.hero.update(dt, t);
+    // Obstacle positions first so this frame's floor/collision checks use current x.
+    for (const o of this.obstacles) o.setSongTime(t);
+    for (const o of this.flyingObstacles) o.setSongTime(t);
+
+    const floorY = this.computeFloorY();
+    this.hero.update(dt, t, floorY);
     this.pulseOnBeat(t);
 
-    for (const o of this.obstacles) o.setSongTime(t);
-    if (this.phase === 'playing') this.resolveObstacles(t);
+    if (this.phase === 'playing') {
+      if (this.heroMode === 'ground') {
+        this.resolveObstacles(t);
+      } else {
+        this.resolveFlyingObstacles(t);
+        this.flyTimerText.setText(`${Math.max(0, this.flightEndsAt - t).toFixed(1)}s`);
+        if (this.hero.touchingGround) {
+          this.exitFlight(t, true);
+        } else if (t >= this.flightEndsAt) {
+          this.exitFlight(t, false);
+        }
+      }
+    }
 
     this.progressFill.width = 300 * Phaser.Math.Clamp(t / this.beatmap.duration, 0, 1);
 
@@ -255,6 +301,22 @@ export class GameScene extends Phaser.Scene {
       this.phase = 'finished';
       this.time.delayedCall(800, () => this.scene.start('Results', this.scoring.stats));
     }
+  }
+
+  /** Branches double as platforms: ride the top if already above it, else duck under. */
+  private computeFloorY(): number {
+    if (this.heroMode !== 'ground') return GROUND_TOP;
+    const heroBottom = this.hero.bounds.bottom;
+    for (const o of this.obstacles) {
+      if (o.done) continue;
+      const topY = o.platformTopY;
+      if (topY === null) continue;
+      const halfW = o.def.width / 2;
+      if (Math.abs(o.x - HERO_X) <= halfW && heroBottom <= topY + BRANCH_LAND_TOLERANCE) {
+        return topY;
+      }
+    }
+    return GROUND_TOP;
   }
 
   private pulseOnBeat(t: number): void {
@@ -312,12 +374,56 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private resolveFlyingObstacles(t: number): void {
+    const heroB = this.hero.bounds;
+    const heroY = this.hero.flyAltitude;
+
+    for (const o of this.flyingObstacles) {
+      if (o.done) continue;
+
+      if (o.x + o.width / 2 < heroB.left - 4) {
+        this.awardFlyingClear(o);
+        continue;
+      }
+
+      if (Math.abs(o.x - HERO_X) < 200) o.trackApproach(heroY);
+
+      if (this.hero.isBlinking(t)) continue;
+      if (o.forbiddenBoxes().some((box) => boxesOverlap(heroB, box))) {
+        o.hitPlayer = true;
+        this.exitFlight(t, true);
+        return;
+      }
+    }
+  }
+
   private awardClear(o: Obstacle, styleBonus = 0): void {
     if (!o.destroyed) o.cleared = true;
     const rating = Scoring.rate(o.actionDelta);
+    this.commitClear(rating, styleBonus);
+  }
+
+  private awardFlyingClear(o: FlyingObstacle): void {
+    o.cleared = true;
+    const d = o.closestDelta;
+    const rating: Rating = d <= 25 ? 'perfect' : d <= 55 ? 'good' : 'ok';
+    this.commitClear(rating);
+  }
+
+  /** Shared clear bookkeeping (score/combo/HUD/popup) for ground and flight obstacles. */
+  private commitClear(rating: Rating, styleBonus = 0): void {
     const points = this.scoring.addClear(rating, styleBonus);
     this.popup(`${rating.toUpperCase()} +${points}`, RATING_COLORS[rating]);
     this.refreshHud();
+
+    if (
+      this.heroMode === 'ground' &&
+      this.phase === 'playing' &&
+      this.scoring.combo > 0 &&
+      this.scoring.combo % COMBO_TO_FLY === 0
+    ) {
+      this.enterFlight();
+    }
   }
 
   private onMiss(t: number): void {
@@ -326,6 +432,40 @@ export class GameScene extends Phaser.Scene {
     this.popup('MISS', '#ef4444');
     this.cameras.main.shake(120, 0.006);
     this.refreshHud();
+  }
+
+  private enterFlight(): void {
+    const t = this.conductor.songTime;
+    this.heroMode = 'flying';
+    this.flightEndsAt = t + FLIGHT_DURATION;
+    this.hero.enterFlight();
+
+    const windowEvents = this.beatmap.events.filter(
+      (e) => e.time > t + 0.6 && e.time < this.flightEndsAt,
+    );
+    this.flyingObstacles = createFlyingObstacles(this, windowEvents);
+
+    this.flyBannerText.setAlpha(1).setVisible(true);
+    this.tweens.add({ targets: this.flyBannerText, alpha: 0, duration: 600, delay: 1400 });
+    this.flyTimerText.setVisible(true);
+  }
+
+  private exitFlight(t: number, failed: boolean): void {
+    this.heroMode = 'ground';
+    this.hero.exitFlight();
+    this.flyBannerText.setVisible(false);
+    this.flyTimerText.setVisible(false);
+
+    for (const o of this.flyingObstacles) if (!o.done) o.destroyVisual();
+    this.flyingObstacles = [];
+
+    // Ground obstacles that scrolled by underneath while airborne: consume
+    // silently (no score either way) so landing doesn't trigger a score burst.
+    for (const o of this.obstacles) {
+      if (!o.done && o.hitTime <= t) o.ghosted = true;
+    }
+
+    if (failed) this.onMiss(t);
   }
 
   private refreshHud(): void {

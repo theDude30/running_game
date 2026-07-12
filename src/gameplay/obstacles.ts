@@ -129,6 +129,13 @@ export class Obstacle {
     };
   }
 
+  /** Branches double as platforms: their top surface, or null if not rideable. */
+  get platformTopY(): number | null {
+    if (this.type !== 'branch') return null;
+    const c = this.def.collide;
+    return c.cy - c.h / 2;
+  }
+
   /** Kick/stomp destruction with a quick burst animation. */
   explode(scene: Phaser.Scene): void {
     this.destroyed = true;
