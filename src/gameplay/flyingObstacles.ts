@@ -19,11 +19,19 @@ export type FlyingKind = 'wall' | 'dragon';
 export type Band = 'high' | 'low';
 
 const BAND_Y: Record<Band, number> = { high: FLY_BAND_HIGH, low: FLY_BAND_LOW };
-const WIDTH = 46;
+const WALL_WIDTH = 46;
 // The gap must fit the hero's hitbox, not just its center: sizing it as
 // tolerance + half the hitbox means "stay within `tolerance` of the band
 // center" is the whole fairness contract — the hero's edges are covered.
 const GAP_HALF = FLY_BAND_TOLERANCE + FLY_HITBOX_HEIGHT / 2;
+
+const DRAGON_WIDTH = 62;
+const DRAGON_HEIGHT = 52;
+const DRAGON_HALF = DRAGON_HEIGHT / 2 + FLY_HITBOX_HEIGHT / 2; // hitbox-aware, same fairness contract
+
+function opposite(band: Band): Band {
+  return band === 'high' ? 'low' : 'high';
+}
 
 /**
  * Ground obstacle families double as flight triggers: bass-family events
@@ -40,9 +48,12 @@ function familyToBand(type: ObstacleType): { kind: FlyingKind; band: Band } {
 }
 
 /**
- * Flight-mode obstacle: a barrier spanning the whole flight altitude except
- * a gap around one safe band. The hero must be in the gap when the barrier
- * reaches the hero's column — the vertical analogue of "act on the beat".
+ * Flight-mode obstacle, two flavors:
+ *  - 'wall': a barrier spanning the whole flight altitude except a gap
+ *    around the safe band — fly through the gap, Flappy-Bird style.
+ *  - 'dragon': a compact creature hazard parked at the DANGEROUS band (the
+ *    one opposite the safe band) — avoid it by simply being elsewhere,
+ *    not by threading a gap.
  */
 export class FlyingObstacle {
   readonly hitTime: number;
@@ -60,21 +71,36 @@ export class FlyingObstacle {
     this.kind = kind;
     this.band = band;
 
-    const color = kind === 'wall' ? COLORS.flyWall : COLORS.flyDragon;
-    const safeCenter = BAND_Y[band];
+    const parts: Phaser.GameObjects.Rectangle[] =
+      kind === 'wall' ? this.buildWallParts(scene) : this.buildDragonParts(scene);
+    this.container = scene.add.container(-1000, 0, parts);
+    this.container.setVisible(false);
+  }
+
+  private buildWallParts(scene: Phaser.Scene): Phaser.GameObjects.Rectangle[] {
+    const safeCenter = BAND_Y[this.band];
     const gapTop = safeCenter - GAP_HALF;
     const gapBottom = safeCenter + GAP_HALF;
     const parts: Phaser.GameObjects.Rectangle[] = [];
     if (gapTop > FLY_TOP) {
       const h = gapTop - FLY_TOP;
-      parts.push(scene.add.rectangle(0, FLY_TOP + h / 2, WIDTH, h, color));
+      parts.push(scene.add.rectangle(0, FLY_TOP + h / 2, WALL_WIDTH, h, COLORS.flyWall));
     }
     if (gapBottom < GROUND_TOP) {
       const h = GROUND_TOP - gapBottom;
-      parts.push(scene.add.rectangle(0, gapBottom + h / 2, WIDTH, h, color));
+      parts.push(scene.add.rectangle(0, gapBottom + h / 2, WALL_WIDTH, h, COLORS.flyWall));
     }
-    this.container = scene.add.container(-1000, 0, parts);
-    this.container.setVisible(false);
+    return parts;
+  }
+
+  /** A bird/dragon silhouette: body + two wing slivers, parked at the danger band. */
+  private buildDragonParts(scene: Phaser.Scene): Phaser.GameObjects.Rectangle[] {
+    const cy = BAND_Y[opposite(this.band)];
+    return [
+      scene.add.rectangle(0, cy, DRAGON_WIDTH * 0.55, DRAGON_HEIGHT, COLORS.flyDragon),
+      scene.add.rectangle(-DRAGON_WIDTH * 0.22, cy - DRAGON_HEIGHT * 0.32, DRAGON_WIDTH * 0.4, 10, COLORS.flyDragon),
+      scene.add.rectangle(DRAGON_WIDTH * 0.22, cy - DRAGON_HEIGHT * 0.32, DRAGON_WIDTH * 0.4, 10, COLORS.flyDragon),
+    ];
   }
 
   get done(): boolean {
@@ -86,7 +112,7 @@ export class FlyingObstacle {
   }
 
   get width(): number {
-    return WIDTH;
+    return this.kind === 'wall' ? WALL_WIDTH : DRAGON_WIDTH;
   }
 
   setSongTime(t: number): void {
@@ -95,20 +121,24 @@ export class FlyingObstacle {
     this.container.setVisible(x > -80 && x < GAME_WIDTH + 250);
   }
 
-  /** Forbidden collision boxes (everything outside the safe band's gap). */
+  /** Collision box(es): a gap-barrier for walls, a compact body for dragons. */
   forbiddenBoxes(): Box[] {
-    const safeCenter = BAND_Y[this.band];
-    const gapTop = safeCenter - GAP_HALF;
-    const gapBottom = safeCenter + GAP_HALF;
-    const halfW = WIDTH / 2;
-    const boxes: Box[] = [];
-    if (gapTop > FLY_TOP) {
-      boxes.push({ left: this.x - halfW, right: this.x + halfW, top: FLY_TOP, bottom: gapTop });
+    const halfW = this.width / 2;
+    if (this.kind === 'wall') {
+      const safeCenter = BAND_Y[this.band];
+      const gapTop = safeCenter - GAP_HALF;
+      const gapBottom = safeCenter + GAP_HALF;
+      const boxes: Box[] = [];
+      if (gapTop > FLY_TOP) {
+        boxes.push({ left: this.x - halfW, right: this.x + halfW, top: FLY_TOP, bottom: gapTop });
+      }
+      if (gapBottom < GROUND_TOP) {
+        boxes.push({ left: this.x - halfW, right: this.x + halfW, top: gapBottom, bottom: GROUND_TOP });
+      }
+      return boxes;
     }
-    if (gapBottom < GROUND_TOP) {
-      boxes.push({ left: this.x - halfW, right: this.x + halfW, top: gapBottom, bottom: GROUND_TOP });
-    }
-    return boxes;
+    const cy = BAND_Y[opposite(this.band)];
+    return [{ left: this.x - halfW, right: this.x + halfW, top: cy - DRAGON_HALF, bottom: cy + DRAGON_HALF }];
   }
 
   trackApproach(heroFlyY: number): void {

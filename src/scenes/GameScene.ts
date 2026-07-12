@@ -456,7 +456,9 @@ export class GameScene extends Phaser.Scene {
     this.flyBannerText.setVisible(false);
     this.flyTimerText.setVisible(false);
 
-    for (const o of this.flyingObstacles) if (!o.done) o.destroyVisual();
+    // Destroy every flying obstacle, including the one that just caused a
+    // hit — it's still "done", but its visual must not freeze on screen.
+    for (const o of this.flyingObstacles) o.destroyVisual();
     this.flyingObstacles = [];
 
     // Ground obstacles that scrolled by underneath while airborne: consume

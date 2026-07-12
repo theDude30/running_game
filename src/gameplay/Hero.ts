@@ -130,11 +130,16 @@ export class Hero {
     this.blinkUntil = now + BLINK_DURATION;
   }
 
-  /** Enter flying mode with an upward pop from the current stance. */
+  /**
+   * Enter flying mode with an upward pop. Always launches from a fixed
+   * baseline rather than the current feetY — triggering mid-jump (hero
+   * already elevated) must not stack with the pop and rocket the hero into
+   * the ceiling.
+   */
   enterFlight(): void {
     this.mode = 'flying';
     this.ducking = false;
-    this.flyY = this.feetY - HERO_HEIGHT / 2 - 30;
+    this.flyY = GROUND_TOP - HERO_HEIGHT / 2 - 30;
     this.velY = -FLY_ENTRY_SPEED;
     this.thrusting = false;
   }
