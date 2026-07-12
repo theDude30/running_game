@@ -1,4 +1,4 @@
-import type { Beatmap, BeatEvent, ObstacleType } from './types';
+import type { Beatmap, BeatEvent, ObstacleType, StarEvent } from './types';
 
 /**
  * Hand-authored Phase 1 test track: 120 BPM, 48 seconds, silent metronome.
@@ -54,7 +54,21 @@ function build(): Beatmap {
   section(events, 88, 2, ['pit', 'branch', 'pit']);
 
   events.sort((a, b) => a.time - b.time);
-  return { name: 'Test Track', bpm: BPM, duration: 96 * BEAT, weatherType: 'none', events };
+
+  // Easy stars are placed on beats with no jump-forcing obstacle nearby
+  // (the branch/zombie sections) — see generate.ts for why: a coincidence
+  // with a jump-forcing obstacle can carry the hero above an "easy" star's
+  // body-height band right when it arrives.
+  const stars: StarEvent[] = [
+    { time: 17 * BEAT, tier: 'easy' },
+    { time: 20 * BEAT, tier: 'medium' },
+    { time: 36 * BEAT, tier: 'hard' },
+    { time: 33 * BEAT, tier: 'easy' },
+    { time: 64 * BEAT, tier: 'medium' },
+    { time: 80 * BEAT, tier: 'hard' },
+  ];
+
+  return { name: 'Test Track', bpm: BPM, duration: 96 * BEAT, weatherType: 'none', events, stars };
 }
 
 export const testBeatmap: Beatmap = build();

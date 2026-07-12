@@ -22,6 +22,7 @@ import { Hero, boxesOverlap } from '../gameplay/Hero';
 import { Obstacle, createObstacles, type HeroAction } from '../gameplay/obstacles';
 import { createFlyingObstacles, FlyingObstacle } from '../gameplay/flyingObstacles';
 import { Scoring, type Rating } from '../gameplay/Scoring';
+import { createStars, Star } from '../gameplay/Star';
 import { WeatherSystem } from '../gameplay/WeatherSystem';
 import { InputController } from '../input/InputController';
 
@@ -40,6 +41,7 @@ export class GameScene extends Phaser.Scene {
   private beatmap!: Beatmap;
   private hero!: Hero;
   private obstacles!: Obstacle[];
+  private stars!: Star[];
   private scoring!: Scoring;
   private phase: PlayPhase = 'countdown';
   private heroMode: HeroMode = 'ground';
@@ -47,6 +49,7 @@ export class GameScene extends Phaser.Scene {
   private flyingObstacles: FlyingObstacle[] = [];
 
   private scoreText!: Phaser.GameObjects.Text;
+  private starText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private countdownText!: Phaser.GameObjects.Text;
   private progressFill!: Phaser.GameObjects.Rectangle;
@@ -102,6 +105,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.scoring = new Scoring();
+    this.scoring.starsTotal = this.beatmap.stars.length;
     this.phase = 'countdown';
     this.heroMode = 'ground';
     this.flyingObstacles = [];
@@ -117,11 +121,19 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.obstacles = createObstacles(this, this.beatmap);
+    this.stars = createStars(this, this.beatmap.stars);
     this.hero = new Hero(this);
 
     // HUD
     this.scoreText = this.add
       .text(20, 16, 'SCORE 0', { fontFamily: 'monospace', fontSize: '24px', color: '#ffffff' })
+      .setDepth(100);
+    this.starText = this.add
+      .text(20, 44, `★ 0/${this.beatmap.stars.length}`, {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        color: '#fde68a',
+      })
       .setDepth(100);
     this.comboText = this.add
       .text(GAME_WIDTH - 20, 16, '', { fontFamily: 'monospace', fontSize: '24px', color: '#facc15' })
@@ -296,6 +308,7 @@ export class GameScene extends Phaser.Scene {
     // Obstacle positions first so this frame's floor/collision checks use current x.
     for (const o of this.obstacles) o.setSongTime(t);
     for (const o of this.flyingObstacles) o.setSongTime(t);
+    for (const s of this.stars) s.setSongTime(t);
 
     const floorY = this.computeFloorY();
     this.hero.update(dt, t, floorY);
@@ -308,6 +321,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === 'playing') {
       if (this.heroMode === 'ground') {
         this.resolveObstacles(t);
+        this.resolveStars();
       } else {
         this.resolveFlyingObstacles(t);
         this.flyTimerText.setText(`${Math.max(0, this.flightEndsAt - t).toFixed(1)}s`);
@@ -402,6 +416,24 @@ export class GameScene extends Phaser.Scene {
 
       o.hitPlayer = true;
       this.onMiss(t);
+    }
+  }
+
+  /** Bonus collectibles: simple overlap, no timing judgement, no penalty for missing. */
+  private resolveStars(): void {
+    const heroB = this.hero.bounds;
+    for (const s of this.stars) {
+      if (s.done) continue;
+      if (s.x + s.width / 2 < heroB.left - 4) {
+        s.missed = true;
+        continue;
+      }
+      if (boxesOverlap(heroB, s.bounds)) {
+        const points = this.scoring.collectStar(s.points);
+        s.collect(this);
+        this.popup(`★ +${points}`, '#fde68a');
+        this.refreshHud();
+      }
     }
   }
 
@@ -507,6 +539,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshHud(): void {
     this.scoreText.setText(`SCORE ${this.scoring.score}`);
+    this.starText.setText(`★ ${this.scoring.starsCollected}/${this.scoring.starsTotal}`);
     const m = this.scoring.multiplier;
     this.comboText.setText(
       this.scoring.combo > 0 ? `×${m}  ${this.scoring.combo} combo` : '',

@@ -8,7 +8,7 @@ export class ResultsScene extends Phaser.Scene {
   }
 
   create(data: RunStats): void {
-    const { score, maxCombo, counts } = data;
+    const { score, maxCombo, counts, starsCollected, starsTotal } = data;
 
     this.add
       .text(GAME_WIDTH / 2, 100, 'TRACK COMPLETE', {
@@ -29,7 +29,7 @@ export class ResultsScene extends Phaser.Scene {
     this.add
       .text(
         GAME_WIDTH / 2,
-        290,
+        280,
         `Max combo  ${maxCombo}\n\nPerfect ${counts.perfect}   Good ${counts.good}   OK ${counts.ok}   Miss ${counts.miss}`,
         {
           fontFamily: 'monospace',
@@ -39,6 +39,14 @@ export class ResultsScene extends Phaser.Scene {
           lineSpacing: 6,
         },
       )
+      .setOrigin(0.5);
+
+    this.add
+      .text(GAME_WIDTH / 2, 350, `★ Stars  ${starsCollected}/${starsTotal}`, {
+        fontFamily: 'monospace',
+        fontSize: '20px',
+        color: '#fde68a',
+      })
       .setOrigin(0.5);
 
     const again = this.add

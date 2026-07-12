@@ -14,6 +14,20 @@ export interface BeatEvent {
  */
 export type WeatherType = 'none' | 'rain' | 'snow';
 
+/**
+ * How high off the ground a star sits, which is what makes it easy/medium/
+ * hard: easy is body-height (collected just by running), medium needs a
+ * timed single jump, hard needs a timed double jump. No button-press
+ * timing involved — purely "be in the right place," unlike obstacles.
+ */
+export type StarTier = 'easy' | 'medium' | 'hard';
+
+export interface StarEvent {
+  /** Seconds into the song when the star reaches the hero. */
+  time: number;
+  tier: StarTier;
+}
+
 export interface Beatmap {
   name: string;
   bpm: number;
@@ -22,6 +36,8 @@ export interface Beatmap {
   weatherType: WeatherType;
   /** Sorted by time ascending. */
   events: BeatEvent[];
+  /** Sorted by time ascending. Capped at 20 per track regardless of length. */
+  stars: StarEvent[];
 }
 
 /** Everything GameScene needs for a run; stored in the game registry. */

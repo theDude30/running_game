@@ -8,6 +8,8 @@ export interface RunStats {
   score: number;
   maxCombo: number;
   counts: { perfect: number; good: number; ok: number; miss: number };
+  starsCollected: number;
+  starsTotal: number;
 }
 
 export class Scoring {
@@ -15,6 +17,8 @@ export class Scoring {
   combo = 0;
   maxCombo = 0;
   counts = { perfect: 0, good: 0, ok: 0, miss: 0 };
+  starsCollected = 0;
+  starsTotal = 0;
 
   get multiplier(): number {
     if (this.combo >= 50) return 4;
@@ -47,7 +51,25 @@ export class Scoring {
     this.counts.miss += 1;
   }
 
+  /**
+   * Flat bonus, deliberately not multiplied by the rhythm-timing combo —
+   * stars are a separate collectible layer, not part of the beat-matching
+   * scoring, so missing one carries no penalty and collecting one doesn't
+   * interact with the multiplier.
+   */
+  collectStar(points: number): number {
+    this.starsCollected += 1;
+    this.score += points;
+    return points;
+  }
+
   get stats(): RunStats {
-    return { score: this.score, maxCombo: this.maxCombo, counts: { ...this.counts } };
+    return {
+      score: this.score,
+      maxCombo: this.maxCombo,
+      counts: { ...this.counts },
+      starsCollected: this.starsCollected,
+      starsTotal: this.starsTotal,
+    };
   }
 }

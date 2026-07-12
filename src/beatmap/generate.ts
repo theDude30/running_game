@@ -1,4 +1,4 @@
-import type { Beatmap, BeatEvent, ObstacleType } from './types';
+import type { Beatmap, BeatEvent, ObstacleType, StarEvent, StarTier } from './types';
 import { FFT } from './fft';
 
 /**
@@ -37,6 +37,16 @@ const CHROMA_WIN = 8192;
 const CHROMA_MIN_HZ = 80; // ignore sub-bass rumble/noise when building the chroma profile
 const CHROMA_MAX_HZ = 5000; // ignore percussive/noise energy above the tonal range
 const HAPPY_MIN_BPM = 110; // major-key tracks at/above this tempo read as upbeat, not just "not sad"
+
+// Stars: a bonus collectible layer, independent of the obstacle rhythm —
+// no button-press timing, just spatial positioning at the right moment.
+const STAR_MAX_COUNT = 20; // hard cap regardless of song length
+const STAR_MIN_COUNT = 3;
+const STAR_PERIOD = 14; // roughly one star every this many seconds of usable song
+const STAR_START_BUFFER = 6; // no stars before this many seconds in
+const STAR_END_BUFFER = 4; // none this close to the end either
+// 40% easy / 40% medium / 20% hard, cycled deterministically by index
+const STAR_TIER_CYCLE: StarTier[] = ['easy', 'medium', 'easy', 'hard', 'medium'];
 
 // Krumhansl-Kessler key profiles: empirically measured perceived "fit" of
 // each scale degree to a major/minor tonic, the standard tool for audio key
@@ -124,7 +134,87 @@ export async function generateBeatmap(
   makeFeasible(events);
   const chroma = computeChroma(channel, sampleRate);
   const weatherType = pickWeatherType(chroma, bpm);
-  return { name, bpm, duration, weatherType, events };
+  const stars = generateStars(duration, events);
+  return { name, bpm, duration, weatherType, events, stars };
+}
+
+/**
+ * Spreads up to STAR_MAX_COUNT stars evenly across the track. Deterministic
+ * (a sine-hash jitter instead of Math.random) so the same audio always
+ * produces the same star layout — required for the same fairness reason as
+ * the obstacle beatmap: every player on a track needs an identical level.
+ *
+ * Easy stars are meant to be collected just by running — but a jump-forcing
+ * obstacle (pit/wall/lava) can land at the exact same moment by pure
+ * coincidence, since stars and obstacles are placed independently. That
+ * puts the hero mid-air, above the star's body-height band, right when an
+ * "easy" star arrives — not actually easy anymore. Nudge easy stars away
+ * from any jump-forcing obstacle; medium/hard already expect a jump, so a
+ * coincidence there is a bonus (clear the obstacle and grab the star in one
+ * jump), not a problem.
+ */
+function generateStars(duration: number, obstacleEvents: BeatEvent[]): StarEvent[] {
+  const usableSpan = duration - STAR_START_BUFFER - STAR_END_BUFFER;
+  if (usableSpan <= 0) return [];
+  const count = Math.min(STAR_MAX_COUNT, Math.max(STAR_MIN_COUNT, Math.round(usableSpan / STAR_PERIOD)));
+  const step = usableSpan / count;
+  const jumpTimes = obstacleEvents.filter((e) => forcesJumpType(e.type)).map((e) => e.time);
+
+  const stars: StarEvent[] = [];
+  for (let i = 0; i < count; i++) {
+    const jitter = deterministicJitter(i); // in [-0.5, 0.5)
+    const candidate = clamp(
+      STAR_START_BUFFER + step * (i + 0.5) + jitter * step * 0.6,
+      STAR_START_BUFFER,
+      duration - STAR_END_BUFFER,
+    );
+    const tier = STAR_TIER_CYCLE[i % STAR_TIER_CYCLE.length];
+    const time = tier === 'easy' ? findSafeEasyTime(candidate, jumpTimes, step, duration) : candidate;
+    stars.push({ time, tier });
+  }
+  return stars;
+}
+
+/**
+ * Scans outward from `candidate` (alternating +/-) for the nearest moment
+ * that isn't within 0.6s of a jump-forcing obstacle, staying within half a
+ * star-slot of the original spot so it doesn't drift into a neighbor's
+ * territory. In a very dense song a fully clear slot may not exist nearby
+ * — falls back to the least-bad position tried rather than the original.
+ */
+function findSafeEasyTime(candidate: number, jumpTimes: number[], step: number, duration: number): number {
+  const isSafe = (time: number) => jumpTimes.every((jt) => Math.abs(jt - time) >= 0.6);
+  if (isSafe(candidate)) return candidate;
+
+  const maxRadius = step / 2;
+  let best = candidate;
+  let bestClearance = Math.min(...jumpTimes.map((jt) => Math.abs(jt - candidate)), Infinity);
+  for (let radius = 0.4; radius <= maxRadius; radius += 0.4) {
+    for (const dir of [1, -1]) {
+      const t = clamp(candidate + dir * radius, STAR_START_BUFFER, duration - STAR_END_BUFFER);
+      if (isSafe(t)) return t;
+      const clearance = Math.min(...jumpTimes.map((jt) => Math.abs(jt - t)), Infinity);
+      if (clearance > bestClearance) {
+        bestClearance = clearance;
+        best = t;
+      }
+    }
+  }
+  return best;
+}
+
+function forcesJumpType(t: ObstacleType): boolean {
+  return t === 'pit' || t === 'hardWall' || t === 'breakableWall' || t === 'lava';
+}
+
+/** Cheap deterministic pseudo-random in [-0.5, 0.5), seeded by index. */
+function deterministicJitter(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return (x - Math.floor(x)) - 0.5;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }
 
 /** Whole-track-averaged 12-bin chroma profile for key/mode detection. */
