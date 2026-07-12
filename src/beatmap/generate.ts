@@ -24,6 +24,8 @@ const WINDOW_SEC = 4; // …per this many seconds
 const JUMP_RECOVERY = 0.75; // seconds the hero may be airborne after a forced jump
 const REST_EVERY = 18; // guarantee an empty stretch at least this often…
 const REST_LEN = 2.8; // …of at least this length (carved at the weakest spot)
+const MAX_SILENCE_GAP = 12; // never leave the player with nothing to react to this long, start or mid-song
+const GAP_RESCUE_COUNT = 3; // onsets to rescue from the energy gate per over-long gap
 // Chroma (key/mode) analysis needs its own, much larger FFT window than
 // onset detection: WIN's ~43Hz bin resolution is coarser than a semitone at
 // these frequencies (a semitone at C4 is ~15Hz wide), so pitch-class energy
@@ -114,7 +116,8 @@ export async function generateBeatmap(
   ];
   const bpm = estimateBpm(lowFlux, midFlux, frameSec);
   const snapped = snapToGrid(onsets, bpm);
-  const energetic = gateByEnergy(snapped, rms, frameSec);
+  const gated = gateByEnergy(snapped, rms, frameSec);
+  const energetic = capLongSilences(gated, snapped);
   const spaced = densityFilter(energetic, duration);
   const breathing = carveRests(spaced, duration);
   const events = assignTypes(breathing);
@@ -319,6 +322,39 @@ function gateByEnergy(onsets: Onset[], rms: Float32Array, frameSec: number): Ons
     const f = Math.min(n - 1, Math.round(o.time / frameSec));
     return smooth[f] >= floor;
   });
+}
+
+/**
+ * A genuinely quiet stretch (intro, breakdown, bridge) can leave the energy
+ * gate with nothing at all for 20-30+ seconds — correct per-song, but
+ * indistinguishable from "the game stopped generating obstacles" to a
+ * player watching empty road with no idea whether it's the song or a bug.
+ * Never let ANY gap (start-to-first-event, or between two consecutive
+ * events) run longer than MAX_SILENCE_GAP: pull the strongest onsets the
+ * gate dropped back in for that stretch, even though it's technically quiet.
+ */
+function capLongSilences(gated: Onset[], allSnapped: Onset[]): Onset[] {
+  const rescued: Onset[] = [];
+  const rescueGap = (from: number, to: number) => {
+    const candidates = allSnapped
+      .filter((o) => o.time > from && o.time < to)
+      .sort((a, b) => b.strength - a.strength);
+    let count = 0;
+    for (const o of candidates) {
+      if (count >= GAP_RESCUE_COUNT) break;
+      if (rescued.every((r) => Math.abs(r.time - o.time) >= MIN_GAP)) {
+        rescued.push(o);
+        count++;
+      }
+    }
+  };
+
+  const bounds = [FIRST_EVENT_AT, ...gated.map((o) => o.time)];
+  for (let i = 1; i < bounds.length; i++) {
+    if (bounds[i] - bounds[i - 1] > MAX_SILENCE_GAP) rescueGap(bounds[i - 1], bounds[i]);
+  }
+
+  return rescued.length ? [...gated, ...rescued].sort((a, b) => a.time - b.time) : gated;
 }
 
 /** Reaction-time min gap plus a hard cap per rolling window. */
