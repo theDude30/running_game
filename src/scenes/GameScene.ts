@@ -4,6 +4,7 @@ import {
   COLORS,
   COMBO_TO_FLY,
   FLIGHT_DURATION,
+  FLY_GRACE_PERIOD,
   GAME_HEIGHT,
   GAME_WIDTH,
   GROUND_TOP,
@@ -441,7 +442,7 @@ export class GameScene extends Phaser.Scene {
     this.hero.enterFlight();
 
     const windowEvents = this.beatmap.events.filter(
-      (e) => e.time > t + 0.6 && e.time < this.flightEndsAt,
+      (e) => e.time > t + FLY_GRACE_PERIOD && e.time < this.flightEndsAt,
     );
     this.flyingObstacles = createFlyingObstacles(this, windowEvents);
 

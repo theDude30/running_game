@@ -30,6 +30,7 @@ export const BRANCH_LAND_TOLERANCE = 14; // px snap tolerance when landing on to
 // Flying mode
 export const COMBO_TO_FLY = 3; // consecutive clears (any rating) that trigger flight; repeats every N
 export const FLIGHT_DURATION = 20; // seconds
+export const FLY_GRACE_PERIOD = 2.5; // obstacle-free seconds at the start of each flight, to get a feel for the controls
 export const FLY_TOP = 70; // highest altitude the hero can reach
 export const FLY_BAND_HIGH = 170; // "climb" safe-zone center (wall obstacles)
 export const FLY_BAND_LOW = 350; // "dive" safe-zone center (dragon obstacles)
@@ -41,6 +42,11 @@ export const FLY_MAX_UP_SPEED = 420;
 export const FLY_MAX_FALL_SPEED = 480;
 export const FLY_ENTRY_SPEED = 550; // initial pop-up velocity when flight starts
 export const FLY_MIN_BAND_SWITCH = 0.75; // min seconds between obstacles that demand opposite bands
+export const FLY_DRAGON_BOB_AMPLITUDE = 16; // px of vertical bob while flying
+export const FLY_DRAGON_BOB_SPEED = 3.4; // rad/sec of the bob cycle
+export const FLY_DRAGON_FLAP_SPEED = 9; // rad/sec of the wing flap
+export const FLY_DRAGON_WEAVE_AMPLITUDE = 22; // px of horizontal weave on top of the scroll
+export const FLY_DRAGON_WEAVE_SPEED = 2.1; // rad/sec of the weave cycle
 
 export const COLORS = {
   bg: 0x0a0a12,
@@ -55,6 +61,5 @@ export const COLORS = {
   hardWall: 0x475569,
   zombie: 0x15803d,
   zombieEyes: 0xdc2626,
-  flyWall: 0x64748b,
   flyDragon: 0xdc2626,
 } as const;
