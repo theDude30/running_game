@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 import {
-  GAME_HEIGHT,
   GAME_WIDTH,
   WEATHER_COOL_COLOR,
-  WEATHER_FOG_MAX_ALPHA,
+  WEATHER_RAIN_LIFESPAN,
   WEATHER_RAIN_MAX_FREQUENCY_MS,
   WEATHER_RAIN_MAX_SPEED,
   WEATHER_RAIN_MIN_FREQUENCY_MS,
   WEATHER_RAIN_MIN_SPEED,
   WEATHER_SNOW_COLOR,
+  WEATHER_SNOW_LIFESPAN,
   WEATHER_SNOW_MAX_FREQUENCY_MS,
   WEATHER_SNOW_MAX_SPEED,
   WEATHER_SNOW_MIN_FREQUENCY_MS,
@@ -21,34 +21,19 @@ import type { WeatherType } from '../beatmap/types';
 /**
  * The visual half of the music-reactive weather. The archetype (none / rain
  * / snow) is fixed for the whole track — chosen once from the song's key
- * mode and tempo, see beatmap/generate.ts — while bass/treble/volume still
+ * mode and tempo, see beatmap/generate.ts — while bass/treble still
  * modulate its intensity in real time within that archetype. 'none' (happy,
- * upbeat major-key tracks) renders nothing at all: no rain, no snow, no fog.
+ * upbeat major-key tracks) renders nothing at all.
  */
 export class WeatherSystem {
   private readonly emitter: Phaser.GameObjects.Particles.ParticleEmitter | null;
-  private readonly fog: Phaser.GameObjects.Rectangle;
-  private readonly flash: Phaser.GameObjects.Rectangle;
 
-  constructor(
-    scene: Phaser.Scene,
-    private readonly weatherType: WeatherType,
-  ) {
+  constructor(scene: Phaser.Scene, private readonly weatherType: WeatherType) {
     this.emitter = weatherType === 'none' ? null : buildEmitter(scene, weatherType);
     this.emitter?.setDepth(50);
-
-    // Rectangle's constructor `fillAlpha` and its own `.alpha` are separate,
-    // multiplied channels — fillAlpha=0 at construction would make the fill
-    // permanently transparent regardless of later setAlpha() calls. Keep
-    // fillAlpha at full and control visibility only through setAlpha().
-    this.fog = scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xaab4c8, 1);
-    this.fog.setDepth(40).setAlpha(0);
-
-    this.flash = scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 1);
-    this.flash.setDepth(95).setAlpha(0);
   }
 
-  update(m: WeatherMetrics, scene: Phaser.Scene): void {
+  update(m: WeatherMetrics): void {
     if (this.weatherType === 'none' || !this.emitter) return; // clear skies: nothing to update
 
     const isSnow = this.weatherType === 'snow';
@@ -65,13 +50,10 @@ export class WeatherSystem {
     const spread = (isSnow ? 15 : 5) + m.treble * (isSnow ? 20 : 25);
     this.emitter.particleAngle = { min: 90 - spread * 0.3, max: 90 + spread };
 
-    // Volume -> fog density
-    this.fog.setAlpha(Phaser.Math.Clamp(m.volume * WEATHER_FOG_MAX_ALPHA, 0, WEATHER_FOG_MAX_ALPHA));
-
     if (isSnow) {
       this.emitter.setParticleTint(WEATHER_SNOW_COLOR); // snow stays a fixed pale color
     } else {
-      // Centroid -> color: cool/bright for high pitch, warm/dark for low pitch
+      // Centroid -> color: cool for high pitch, warm/dark for low pitch
       const color = Phaser.Display.Color.Interpolate.ColorWithColor(
         Phaser.Display.Color.ValueToColor(WEATHER_WARM_COLOR),
         Phaser.Display.Color.ValueToColor(WEATHER_COOL_COLOR),
@@ -80,17 +62,10 @@ export class WeatherSystem {
       );
       this.emitter.setParticleTint(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
     }
-
-    // Bass beat -> lightning flash (rain only — snow doesn't get thunder)
-    if (m.beat && !isSnow) {
-      this.flash.setAlpha(0.3 + m.bass * 0.35);
-      scene.tweens.add({ targets: this.flash, alpha: 0, duration: 220 });
-    }
   }
 
   setActive(on: boolean): void {
     this.emitter?.setVisible(on);
-    this.fog.setVisible(on);
   }
 }
 
@@ -115,7 +90,7 @@ function buildEmitter(
   return scene.add.particles(0, 0, textureKey, {
     x: { min: 0, max: GAME_WIDTH },
     y: -20,
-    lifespan: type === 'rain' ? 1400 : 3200,
+    lifespan: type === 'rain' ? WEATHER_RAIN_LIFESPAN : WEATHER_SNOW_LIFESPAN,
     angle: { min: 90, max: 100 },
     speed: type === 'rain' ? WEATHER_RAIN_MIN_SPEED : WEATHER_SNOW_MIN_SPEED,
     alpha: { start: type === 'rain' ? 0.7 : 0.85, end: 0.1 },

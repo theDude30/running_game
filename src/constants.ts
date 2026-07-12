@@ -89,7 +89,6 @@ export const WEATHER_SNOW_MAX_FREQUENCY_MS = 340;
 export const WEATHER_SNOW_MIN_SPEED = 40;
 export const WEATHER_SNOW_MAX_SPEED = 160;
 export const WEATHER_SNOW_LIFESPAN = 3200;
-export const WEATHER_FOG_MAX_ALPHA = 0.45;
 
 export const COLORS = {
   bg: 0x0a0a12,

@@ -85,10 +85,6 @@ export class Hero {
     };
   }
 
-  get falling(): boolean {
-    return this.velY > 60;
-  }
-
   /** @returns true if a jump actually happened (max double jump). */
   jump(): boolean {
     if (this.mode !== 'ground' || this.jumpsUsed >= 2) return false;

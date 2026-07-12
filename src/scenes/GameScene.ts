@@ -50,12 +50,19 @@ export class GameScene extends Phaser.Scene {
   private countdownText!: Phaser.GameObjects.Text;
   private progressFill!: Phaser.GameObjects.Rectangle;
   private beatDot!: Phaser.GameObjects.Arc;
-  private groundFlash!: Phaser.GameObjects.Rectangle;
   private pauseOverlay!: Phaser.GameObjects.Container;
   private flyBannerText!: Phaser.GameObjects.Text;
   private flyTimerText!: Phaser.GameObjects.Text;
   private lastBeat = -Infinity;
   private lastFrameAt = 0;
+  /**
+   * Hero's feet position a frame ago, used to detect "descended onto this
+   * obstacle" for stomps. Deliberately not based on current velocity: a
+   * double-jump input fires in the same frame as landing resets velY to
+   * ascending, which would flip a real stomp into a miss if stomp detection
+   * looked at instantaneous velocity instead of where the hero just was.
+   */
+  private prevHeroBottom = GROUND_TOP;
   private audioCtx: AudioContext | null = null;
   private audioSource: AudioBufferSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
@@ -107,9 +114,6 @@ export class GameScene extends Phaser.Scene {
       GAME_HEIGHT - GROUND_TOP,
       COLORS.ground,
     );
-    this.groundFlash = this.add
-      .rectangle(GAME_WIDTH / 2, GROUND_TOP + 4, GAME_WIDTH, 8, 0xffffff)
-      .setAlpha(0);
 
     this.obstacles = createObstacles(this, this.beatmap);
     this.hero = new Hero(this);
@@ -297,7 +301,7 @@ export class GameScene extends Phaser.Scene {
     this.pulseOnBeat(t);
 
     if (this.weatherAnalyzer && this.weatherSystem) {
-      this.weatherSystem.update(this.weatherAnalyzer.sample(), this);
+      this.weatherSystem.update(this.weatherAnalyzer.sample());
     }
 
     if (this.phase === 'playing') {
@@ -313,6 +317,8 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    this.prevHeroBottom = this.hero.bounds.bottom;
 
     this.progressFill.width = 300 * Phaser.Math.Clamp(t / this.beatmap.duration, 0, 1);
 
@@ -345,8 +351,6 @@ export class GameScene extends Phaser.Scene {
     this.lastBeat = beat;
     this.beatDot.setScale(1.8);
     this.tweens.add({ targets: this.beatDot, scale: 1, duration: 180 });
-    this.groundFlash.setAlpha(0.35);
-    this.tweens.add({ targets: this.groundFlash, alpha: 0, duration: 160 });
   }
 
   private resolveObstacles(t: number): void {
@@ -375,8 +379,10 @@ export class GameScene extends Phaser.Scene {
         : boxesOverlap(heroB, box);
       if (!overlapping) continue;
 
-      // Stomp: falling onto the top of a stompable obstacle
-      if (o.def.stompable && this.hero.falling && heroB.bottom <= box.top + 26) {
+      // Stomp: hero's feet were above this obstacle's top a moment ago and
+      // are now within stomp range — position history, not instantaneous
+      // velocity (see prevHeroBottom for why).
+      if (o.def.stompable && this.prevHeroBottom <= box.top + 4 && heroB.bottom <= box.top + 26) {
         o.explode(this);
         this.hero.bounce();
         this.awardClear(o);
