@@ -482,6 +482,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private exitFlight(t: number, failed: boolean): void {
+    // Miss feedback (popup, blink, shake) must fire BEFORE the hero resets
+    // to ground position — otherwise the "MISS" popup renders down at
+    // ground level instead of up where the collision actually happened,
+    // reading as if nothing was detected at all.
+    if (failed) this.onMiss(t);
+
     this.heroMode = 'ground';
     this.hero.exitFlight();
     this.flyBannerText.setVisible(false);
@@ -497,8 +503,6 @@ export class GameScene extends Phaser.Scene {
     for (const o of this.obstacles) {
       if (!o.done && o.hitTime <= t) o.ghosted = true;
     }
-
-    if (failed) this.onMiss(t);
   }
 
   private refreshHud(): void {
