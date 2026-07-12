@@ -13,6 +13,7 @@ import {
 } from '../constants';
 import { Conductor } from '../audio/Conductor';
 import { SmoothClock } from '../audio/SmoothClock';
+import { WeatherAnalyzer } from '../audio/WeatherAnalyzer';
 import { getAudioContext } from '../audio/sources';
 import { testBeatmap } from '../beatmap/testBeatmap';
 import type { Beatmap, RunConfig } from '../beatmap/types';
@@ -20,6 +21,7 @@ import { Hero, boxesOverlap } from '../gameplay/Hero';
 import { Obstacle, createObstacles, type HeroAction } from '../gameplay/obstacles';
 import { createFlyingObstacles, FlyingObstacle } from '../gameplay/flyingObstacles';
 import { Scoring, type Rating } from '../gameplay/Scoring';
+import { WeatherSystem } from '../gameplay/WeatherSystem';
 import { InputController } from '../input/InputController';
 
 const COUNTDOWN = 5;
@@ -56,6 +58,9 @@ export class GameScene extends Phaser.Scene {
   private lastFrameAt = 0;
   private audioCtx: AudioContext | null = null;
   private audioSource: AudioBufferSourceNode | null = null;
+  private analyserNode: AnalyserNode | null = null;
+  private weatherAnalyzer: WeatherAnalyzer | null = null;
+  private weatherSystem: WeatherSystem | null = null;
 
   constructor() {
     super('Game');
@@ -71,12 +76,20 @@ export class GameScene extends Phaser.Scene {
       this.audioCtx = ctx;
       this.audioSource = ctx.createBufferSource();
       this.audioSource.buffer = config.audioBuffer;
-      this.audioSource.connect(ctx.destination);
+      // Analyser is a transparent pass-through — doesn't touch what's heard.
+      this.analyserNode = ctx.createAnalyser();
+      this.audioSource.connect(this.analyserNode);
+      this.analyserNode.connect(ctx.destination);
       const clock = new SmoothClock(ctx);
       this.conductor = new Conductor(this.beatmap.bpm, () => clock.now(), false);
+      this.weatherAnalyzer = new WeatherAnalyzer(this.analyserNode, ctx.sampleRate, () => this.conductor.songTime);
+      this.weatherSystem = new WeatherSystem(this);
     } else {
       this.audioCtx = null;
       this.audioSource = null;
+      this.analyserNode = null;
+      this.weatherAnalyzer = null;
+      this.weatherSystem = null;
       this.conductor = new Conductor(this.beatmap.bpm);
     }
 
@@ -179,6 +192,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.audioSource.disconnect();
       }
+      this.analyserNode?.disconnect();
       if (this.audioCtx?.state === 'suspended') void this.audioCtx.resume();
     });
 
@@ -281,6 +295,10 @@ export class GameScene extends Phaser.Scene {
     const floorY = this.computeFloorY();
     this.hero.update(dt, t, floorY);
     this.pulseOnBeat(t);
+
+    if (this.weatherAnalyzer && this.weatherSystem) {
+      this.weatherSystem.update(this.weatherAnalyzer.sample(), this);
+    }
 
     if (this.phase === 'playing') {
       if (this.heroMode === 'ground') {

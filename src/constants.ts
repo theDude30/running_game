@@ -53,6 +53,35 @@ export const FLY_DRAGON_FLAP_SPEED = 9; // rad/sec of the wing flap
 export const FLY_DRAGON_WEAVE_AMPLITUDE = 22; // px of horizontal weave on top of the scroll
 export const FLY_DRAGON_WEAVE_SPEED = 2.1; // rad/sec of the weave cycle
 
+// Weather: live FFT analysis of the currently playing music drives a
+// particle/fog/lightning layer. See src/audio/WeatherAnalyzer.ts for the
+// smoothing/peak-detection math and src/gameplay/WeatherSystem.ts for the
+// Phaser-side visuals. Inactive for the silent test track (no real audio).
+export const WEATHER_BASS_HZ: readonly [number, number] = [20, 150];
+export const WEATHER_TREBLE_HZ: readonly [number, number] = [2000, 12000];
+// Smoothing: how fast each metric chases its raw FFT reading per frame
+// (higher = snappier, lower = smoother). Emission reacts fast so the game
+// still feels tight to the music; fog swells and fades slowly.
+export const WEATHER_LERP_BASS = 0.35;
+export const WEATHER_LERP_TREBLE = 0.3;
+export const WEATHER_LERP_VOLUME = 0.12;
+export const WEATHER_LERP_CENTROID = 0.08;
+// Peak detection for lightning/gust triggers: fire only when bass spikes
+// well above its own rolling average, not on a raw threshold — keeps quiet
+// songs sensitive and loud songs from triggering every frame.
+export const WEATHER_BEAT_AVG_LERP = 0.06;
+export const WEATHER_BEAT_RATIO = 1.5;
+export const WEATHER_BEAT_MIN_ENERGY = 0.12;
+export const WEATHER_BEAT_MIN_GAP = 0.12; // seconds, however loud
+// Visuals
+export const WEATHER_COOL_COLOR = 0xbfe9ff; // high spectral centroid (bright treble): icy blue/white
+export const WEATHER_WARM_COLOR = 0x6b3fa0; // low spectral centroid (bass-heavy): deep purple/grey
+export const WEATHER_MIN_FREQUENCY_MS = 18; // particle emission interval at max bass (dense burst)
+export const WEATHER_MAX_FREQUENCY_MS = 260; // particle emission interval at rest (light drizzle)
+export const WEATHER_MIN_SPEED = 220;
+export const WEATHER_MAX_SPEED = 620;
+export const WEATHER_FOG_MAX_ALPHA = 0.45;
+
 export const COLORS = {
   bg: 0x0a0a12,
   ground: 0x2d2d44,
