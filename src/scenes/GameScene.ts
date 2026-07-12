@@ -8,6 +8,7 @@ import {
   RATING_WINDOW,
 } from '../constants';
 import { Conductor } from '../audio/Conductor';
+import { SmoothClock } from '../audio/SmoothClock';
 import { getAudioContext } from '../audio/sources';
 import { testBeatmap } from '../beatmap/testBeatmap';
 import type { Beatmap, RunConfig } from '../beatmap/types';
@@ -60,7 +61,8 @@ export class GameScene extends Phaser.Scene {
       this.audioSource = ctx.createBufferSource();
       this.audioSource.buffer = config.audioBuffer;
       this.audioSource.connect(ctx.destination);
-      this.conductor = new Conductor(this.beatmap.bpm, () => ctx.currentTime, false);
+      const clock = new SmoothClock(ctx);
+      this.conductor = new Conductor(this.beatmap.bpm, () => clock.now(), false);
     } else {
       this.audioCtx = null;
       this.audioSource = null;
