@@ -1,0 +1,5 @@
+package com.rhythmrunner.game;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}

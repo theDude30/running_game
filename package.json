@@ -1,0 +1,32 @@
+{
+  "name": "rhythm-runner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "2D side-scrolling rhythm platformer — levels generated from music",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "format": "prettier --write \"src/**/*.ts\" \"*.{json,html,md}\"",
+    "cap:sync": "npm run build && cap sync",
+    "cap:ios": "npm run cap:sync && cap open ios",
+    "cap:android": "npm run cap:sync && cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.6.7",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.7",
+    "@capacitor/cli": "^7.6.7",
+    "@capacitor/ios": "^7.6.7",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "prettier": "^3.9.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0",
+    "vite": "^8.1.4"
+  }
+}
