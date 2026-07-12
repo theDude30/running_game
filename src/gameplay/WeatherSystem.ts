@@ -15,8 +15,8 @@ import type { WeatherMetrics } from '../audio/WeatherAnalyzer';
 /**
  * The visual half of the music-reactive weather: rain driven by bass
  * (emission rate) and treble (speed/angle), fog driven by RMS volume, color
- * driven by spectral centroid, and a lightning flash + camera shake on each
- * detected bass beat. See WeatherAnalyzer for how the metrics are computed.
+ * driven by spectral centroid, and a lightning flash on each detected bass
+ * beat. See WeatherAnalyzer for how the metrics are computed.
  */
 export class WeatherSystem {
   private readonly emitter: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -73,11 +73,10 @@ export class WeatherSystem {
     );
     this.emitter.setParticleTint(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
 
-    // Bass beat -> lightning flash + screen shake
+    // Bass beat -> lightning flash
     if (m.beat) {
       this.flash.setAlpha(0.3 + m.bass * 0.35);
       scene.tweens.add({ targets: this.flash, alpha: 0, duration: 220 });
-      scene.cameras.main.shake(90, 0.002 + m.bass * 0.006);
     }
   }
 
