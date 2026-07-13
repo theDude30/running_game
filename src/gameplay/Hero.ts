@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import {
   BLINK_DURATION,
-  COLORS,
   DUCK_HEIGHT,
   FLY_ENTRY_SPEED,
   FLY_GRAVITY,
@@ -20,6 +19,55 @@ import {
   KICK_RANGE,
   STOMP_BOUNCE,
 } from '../constants';
+import runCycle1Url from '../assets/hero/run-cycle-1.png';
+import runCycle2Url from '../assets/hero/run-cycle-2.png';
+import runCycle3Url from '../assets/hero/run-cycle-3.png';
+import runCycle4Url from '../assets/hero/run-cycle-4.png';
+import runCycle5Url from '../assets/hero/run-cycle-5.png';
+import runCycle6Url from '../assets/hero/run-cycle-6.png';
+import runCycle7Url from '../assets/hero/run-cycle-7.png';
+import runCycle8Url from '../assets/hero/run-cycle-8.png';
+import runCycle9Url from '../assets/hero/run-cycle-9.png';
+import runCycle10Url from '../assets/hero/run-cycle-10.png';
+import runCycle11Url from '../assets/hero/run-cycle-11.png';
+import runCycle12Url from '../assets/hero/run-cycle-12.png';
+import duckUrl from '../assets/hero/duck.png';
+import jumpUrl from '../assets/hero/jump.png';
+import fireUrl from '../assets/hero/fire.png';
+
+const RUN_CYCLE_URLS = [
+  runCycle1Url,
+  runCycle2Url,
+  runCycle3Url,
+  runCycle4Url,
+  runCycle5Url,
+  runCycle6Url,
+  runCycle7Url,
+  runCycle8Url,
+  runCycle9Url,
+  runCycle10Url,
+  runCycle11Url,
+  runCycle12Url,
+];
+
+// Sprite art is square and includes flowing hair/guitar that extends well
+// beyond the hitbox, so the visual size is scaled up independently of
+// HERO_WIDTH/HERO_HEIGHT (which stay pure hitbox dimensions).
+const SPRITE_SCALE = 1.9;
+
+// The source video these 12 frames were extracted from played at 6fps (2s
+// for a full cycle) — a natural jogging cadence. Locking the full cycle to
+// a single beat (0.5s at 120bpm) played it back 4x too fast, so stretch it
+// across several beats instead; still scales with song tempo, just at the
+// source's original pace rather than one loop per beat.
+const RUN_CYCLE_BEATS = 4;
+
+// The duck pose can't use SPRITE_SCALE like the others: the branch obstacle
+// (see obstacles.ts BRANCH_HEIGHT/cy) only leaves 40px of clearance above
+// the ground, so the crouched sprite must render at or under that height or
+// it visually pokes through the wall even though the (correct) hitbox
+// clears it. Capped a couple px under 40 for a safety margin.
+const DUCK_SPRITE_SIZE = 38;
 
 export interface Box {
   left: number;
@@ -36,7 +84,19 @@ export type HeroMode = 'ground' | 'flying';
  * matters more here than physics-engine features.
  */
 export class Hero {
-  readonly display: Phaser.GameObjects.Rectangle;
+  private static readonly TEX_RUN_CYCLE = RUN_CYCLE_URLS.map((_, i) => `hero-run-${i}`);
+  private static readonly TEX_DUCK = 'hero-duck';
+  private static readonly TEX_JUMP = 'hero-jump';
+  private static readonly TEX_FIRE = 'hero-fire';
+
+  static preload(scene: Phaser.Scene): void {
+    RUN_CYCLE_URLS.forEach((url, i) => scene.load.image(Hero.TEX_RUN_CYCLE[i], url));
+    scene.load.image(Hero.TEX_DUCK, duckUrl);
+    scene.load.image(Hero.TEX_JUMP, jumpUrl);
+    scene.load.image(Hero.TEX_FIRE, fireUrl);
+  }
+
+  readonly display: Phaser.GameObjects.Image;
   private mode: HeroMode = 'ground';
   private velY = 0;
   private jumpsUsed = 0;
@@ -48,13 +108,8 @@ export class Hero {
   private blinkUntil = -Infinity;
 
   constructor(scene: Phaser.Scene) {
-    this.display = scene.add.rectangle(
-      HERO_X,
-      GROUND_TOP - HERO_HEIGHT / 2,
-      HERO_WIDTH,
-      HERO_HEIGHT,
-      COLORS.hero,
-    );
+    this.display = scene.add.image(HERO_X, GROUND_TOP, Hero.TEX_RUN_CYCLE[0]).setOrigin(0.5, 1);
+    this.display.setDisplaySize(HERO_HEIGHT * SPRITE_SCALE, HERO_HEIGHT * SPRITE_SCALE);
   }
 
   private get height(): number {
@@ -168,8 +223,11 @@ export class Hero {
   /**
    * @param floorY Ground-mode only: the surface the hero rests on this frame
    *   (GROUND_TOP normally, or an obstacle's top when riding it as a platform).
+   * @param beatDuration Seconds per beat (60 / bpm) — the run-cycle animation
+   *   completes one full loop every RUN_CYCLE_BEATS beats, so legs visibly
+   *   speed up on faster tracks instead of cycling at a fixed wall-clock rate.
    */
-  update(dt: number, now: number, floorY: number = GROUND_TOP): void {
+  update(dt: number, now: number, floorY: number = GROUND_TOP, beatDuration: number = 0.5): void {
     if (this.mode === 'flying') {
       const accel = this.thrusting ? -FLY_UP_ACCEL : FLY_GRAVITY;
       this.velY = Phaser.Math.Clamp(this.velY + accel * dt, -FLY_MAX_UP_SPEED, FLY_MAX_FALL_SPEED);
@@ -185,16 +243,45 @@ export class Hero {
     }
 
     if (this.mode === 'flying') {
-      this.display.setDisplaySize(HERO_WIDTH, HERO_HEIGHT);
+      this.display.setTexture(Hero.TEX_JUMP);
+      this.display.setOrigin(0.5, 0.5);
+      this.setDisplayHeight(HERO_HEIGHT * SPRITE_SCALE);
       this.display.setPosition(HERO_X, this.flyY);
-      this.display.setFillStyle(COLORS.heroFlying);
     } else {
-      const h = this.height;
-      this.display.setDisplaySize(HERO_WIDTH, h);
-      this.display.setPosition(HERO_X, this.feetY - h / 2);
-      this.display.setFillStyle(this.isKicking(now) ? COLORS.heroKick : COLORS.hero);
+      const airborne = this.feetY < floorY - 0.5;
+      const frameCount = Hero.TEX_RUN_CYCLE.length;
+      const frameInterval = (beatDuration * RUN_CYCLE_BEATS) / frameCount;
+      // `now` (Conductor.songTime) is negative during the pre-song countdown;
+      // JS's `%` can return a negative result for a negative dividend, so
+      // normalize into [0, frameCount) rather than indexing with it directly.
+      const cycleIndex = ((Math.floor(now / frameInterval) % frameCount) + frameCount) % frameCount;
+      const runFrame = Hero.TEX_RUN_CYCLE[cycleIndex];
+      const texture = this.isKicking(now)
+        ? Hero.TEX_FIRE
+        : this.ducking
+          ? Hero.TEX_DUCK
+          : airborne
+            ? Hero.TEX_JUMP
+            : runFrame;
+      this.display.setTexture(texture);
+      this.display.setOrigin(0.5, 1);
+      this.setDisplayHeight(this.ducking ? DUCK_SPRITE_SIZE : this.height * SPRITE_SCALE);
+      this.display.setPosition(HERO_X, this.feetY);
     }
     this.display.setAlpha(this.isBlinking(now) ? (Math.sin(now * 40) > 0 ? 0.2 : 0.6) : 1);
+  }
+
+  /**
+   * Scales the sprite to a fixed HEIGHT while preserving its native aspect
+   * ratio (width follows). The five sprite images are cropped tight to their
+   * alpha bounds but aren't identically proportioned, so forcing a uniform
+   * square box (the original approach) squashed some poses and caused a
+   * visible size/position wobble when the run frames alternated.
+   */
+  private setDisplayHeight(targetHeight: number): void {
+    const src = this.display.texture.source[0];
+    const aspect = src.width / src.height;
+    this.display.setDisplaySize(targetHeight * aspect, targetHeight);
   }
 }
 
