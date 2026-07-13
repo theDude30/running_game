@@ -24,8 +24,12 @@ export const BLINK_DURATION = 2; // invincibility after a hit
 // Timing judgement: |action time - beat time| in seconds
 export const RATING_WINDOW = { perfect: 0.07, good: 0.14, ok: 0.25 } as const;
 
-// Branch platform riding: jump on top and walk across instead of ducking
-export const BRANCH_LAND_TOLERANCE = 14; // px snap tolerance when landing on top
+// Branch platform riding: jump on top and walk across instead of ducking.
+// Kept generous — a chained staircase climb (see STAIR_STEP_HEIGHT) reuses
+// this same tolerance, and its jump apexes only clear each step's height by
+// a few px; a tight tolerance turns ordinary spacing jitter between real
+// songs' beats into the difference between landing and clipping the step.
+export const BRANCH_LAND_TOLERANCE = 40; // px snap tolerance when landing on top
 
 // Flying mode
 export const COMBO_TO_FLY = 12; // consecutive clears (any rating) that trigger flight; repeats every N
@@ -89,6 +93,29 @@ export const WEATHER_SNOW_MAX_FREQUENCY_MS = 340;
 export const WEATHER_SNOW_MIN_SPEED = 40;
 export const WEATHER_SNOW_MAX_SPEED = 160;
 export const WEATHER_SNOW_LIFESPAN = 3200;
+
+// Floor climbing: a staircase (3 sequential rideable platforms, reusing the
+// branch-riding mechanic) lets the hero climb to a higher floor. Purely a
+// bonus layer — ignoring a staircase costs nothing. Missing or getting hit
+// by anything while elevated drops the hero all the way back to the ground
+// floor (see GameScene.fallToGroundFloor).
+export const STAIRS_PER_FLOOR = 3;
+export const STAIR_STEP_HEIGHT = 90; // matches the existing branch-ride height, so a fresh jump comfortably reaches the next step
+export const FLOOR_HEIGHT = STAIRS_PER_FLOOR * STAIR_STEP_HEIGHT;
+export const MAX_FLOOR = 4;
+export const FLOOR_BONUS = [750, 1500, 3000, 6000] as const; // index 0 = one-time bonus for first reaching floor 1
+export const FLOOR_CLIMB_PAN_MS = 500; // smooth camera pan when a staircase completes or flight fast-travels to a floor
+export const FLOOR_FALL_MIN_MS = 400;
+export const FLOOR_FALL_MAX_MS = 1200;
+// Small cycling palette (4 floors) recoloring the ground and each obstacle's
+// primary part — staircases themselves stay branch-brown on every floor so
+// they're always recognizable as climbable.
+export const FLOOR_THEMES: readonly { bg: number; obstacle: number }[] = [
+  { bg: 0x1e293b, obstacle: 0x38bdf8 }, // floor 1: Sky — icy blue
+  { bg: 0x2e1065, obstacle: 0xa855f7 }, // floor 2: Storm — violet
+  { bg: 0x431407, obstacle: 0xf97316 }, // floor 3: Ember — fiery orange
+  { bg: 0x022c22, obstacle: 0x4ade80 }, // floor 4: Void — neon green
+];
 
 export const COLORS = {
   bg: 0x0a0a12,

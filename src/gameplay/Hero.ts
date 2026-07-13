@@ -140,10 +140,14 @@ export class Hero {
     this.thrusting = false;
   }
 
-  /** Return to the ground run (forced landing, whether by timeout or a hit). */
-  exitFlight(): void {
+  /**
+   * Return to the ground run (forced landing, whether by timeout or a hit).
+   * @param groundY Ground level to land on — the current floor's, so a
+   *   successful flight can fast-travel back to a floor climbed earlier.
+   */
+  exitFlight(groundY: number = GROUND_TOP): void {
     this.mode = 'ground';
-    this.feetY = GROUND_TOP;
+    this.feetY = groundY;
     this.velY = 0;
     this.jumpsUsed = 0;
   }

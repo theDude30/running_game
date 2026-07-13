@@ -1,5 +1,6 @@
 import type { Beatmap, BeatEvent, ObstacleType, StarEvent, StarTier } from './types';
 import { FFT } from './fft';
+import { STAIRS_PER_FLOOR } from '../constants';
 
 /**
  * Turns decoded audio into a beatmap:
@@ -22,6 +23,18 @@ const REST_ENERGY_RATIO = 0.35; // sections quieter than this × p75 get no obst
 const MAX_PER_WINDOW = 7; // density cap…
 const WINDOW_SEC = 4; // …per this many seconds
 const JUMP_RECOVERY = 0.75; // seconds the hero may be airborne after a forced jump
+// Staircases: every other qualifying duck-mode section (deterministic, by
+// sectionIdx) becomes a climbable staircase instead of its usual branch/
+// zombie mix — frequent enough for a few climb chances per track, rare
+// enough to stay a bonus rather than the norm.
+const STAIR_MIN_GAP = 0.6; // min spacing between steps so a fresh jump-and-land cycle physically fits
+// Climbing tier 2/3 relies on carrying leftover height from the previous
+// step's jump into the next one — a gap much wider than this gives the hero
+// time to fall all the way back to true ground first, and a single fresh
+// jump from the ground can't reach a step two tiers up. Verified empirically
+// (see obstacles.ts jump physics): chained climbing holds up to ~1.05s
+// between steps and reliably fails past that.
+const STAIR_MAX_GAP = 1.05;
 const REST_EVERY = 18; // guarantee an empty stretch at least this often…
 const REST_LEN = 2.8; // …of at least this length (carved at the weakest spot)
 const MAX_SILENCE_GAP = 12; // never leave the player with nothing to react to this long, start or mid-song
@@ -201,6 +214,24 @@ function findSafeEasyTime(candidate: number, jumpTimes: number[], step: number, 
     }
   }
   return best;
+}
+
+/**
+ * Stair tiers are placed on every OTHER onset (see assignTypes), not
+ * consecutive ones — at typical song tempos (>100 BPM) consecutive onsets
+ * are closer together than STAIR_MIN_GAP, which would make every section in
+ * a normal-tempo song infeasible and staircases would never appear at all.
+ * Skipping one onset between each tier roughly doubles the gap, comfortably
+ * clearing STAIR_MIN_GAP for the songs that actually show up here, while
+ * the skipped onsets are dropped rather than becoming ordinary obstacles so
+ * they don't collide with the hero mid-climb.
+ */
+function isStairFeasible(section: Onset[]): boolean {
+  for (let k = 0; k < STAIRS_PER_FLOOR - 1; k++) {
+    const gap = section[(k + 1) * 2].time - section[k * 2].time;
+    if (gap < STAIR_MIN_GAP || gap > STAIR_MAX_GAP) return false;
+  }
+  return true;
 }
 
 function forcesJumpType(t: ObstacleType): boolean {
@@ -538,8 +569,20 @@ function assignTypes(onsets: Onset[]): BeatEvent[] {
     const mode: 'duck' | 'jump' | 'mixed' =
       midShare >= 0.55 || sectionIdx % 3 === 2 ? 'duck' : midShare <= 0.25 ? 'jump' : 'mixed';
 
+    // Every-other-onset span needed to fit STAIRS_PER_FLOOR tiers — see isStairFeasible.
+    const STAIR_SPAN = 2 * STAIRS_PER_FLOOR - 1;
+    const stairSection =
+      mode === 'duck' &&
+      sectionIdx % 2 === 0 &&
+      section.length >= STAIR_SPAN &&
+      isStairFeasible(section);
+
     let hazardStreak = 0;
     section.forEach((o, j) => {
+      if (stairSection && j < STAIR_SPAN) {
+        if (j % 2 === 0) events.push({ time: o.time, type: 'branch', stairTier: j / 2 + 1 });
+        return; // odd onsets in the span are dropped, not turned into obstacles
+      }
       let type: ObstacleType;
       if (mode === 'duck') {
         type = o.band === 'mid' && midRank(o.strength) > 0.6 ? 'zombie' : 'branch';
@@ -584,7 +627,9 @@ function makeFeasible(events: BeatEvent[]): void {
     t === 'pit' || t === 'hardWall' || t === 'breakableWall' || t === 'lava';
   let airborneUntil = -Infinity;
   for (const e of events) {
-    if (e.time < airborneUntil) {
+    // Staircase steps must stay 'branch' — swapping one for a zombie would
+    // silently break the climb chain — so leave them out of this rewrite.
+    if (e.time < airborneUntil && e.stairTier === undefined) {
       if (e.type === 'branch') e.type = 'zombie';
       else if (e.type === 'hardWall' || e.type === 'breakableWall') e.type = 'pit';
     }

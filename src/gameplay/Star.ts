@@ -31,6 +31,7 @@ export class Star {
   private readonly container: Phaser.GameObjects.Container;
   private readonly radius: number;
   private readonly phase: number;
+  private currentY: number;
 
   constructor(scene: Phaser.Scene, event: StarEvent) {
     this.time = event.time;
@@ -48,7 +49,8 @@ export class Star {
       g.destroy();
     }
     const sprite = scene.add.image(0, 0, key);
-    this.container = scene.add.container(-1000, TIER_Y[event.tier], [sprite]).setDepth(45);
+    this.currentY = TIER_Y[event.tier];
+    this.container = scene.add.container(-1000, this.currentY, [sprite]).setDepth(45);
     this.container.setVisible(false);
   }
 
@@ -64,9 +66,11 @@ export class Star {
     return this.radius * 2;
   }
 
-  setSongTime(t: number): void {
+  setSongTime(t: number, floorOffsetY = 0): void {
     const x = HERO_X + (this.time - t) * SCROLL_SPEED;
     this.container.x = x;
+    this.currentY = TIER_Y[this.tier] + floorOffsetY;
+    this.container.y = this.currentY;
     this.container.setVisible(x > -60 && x < GAME_WIDTH + 200);
     this.container.rotation = t * SPIN_SPEED + this.phase;
   }
@@ -75,8 +79,8 @@ export class Star {
     return {
       left: this.x - this.radius,
       right: this.x + this.radius,
-      top: TIER_Y[this.tier] - this.radius,
-      bottom: TIER_Y[this.tier] + this.radius,
+      top: this.currentY - this.radius,
+      bottom: this.currentY + this.radius,
     };
   }
 

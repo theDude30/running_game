@@ -1,7 +1,29 @@
 import Phaser from 'phaser';
-import { COLORS, GAME_WIDTH, GROUND_TOP, HERO_WIDTH, HERO_X, SCROLL_SPEED } from '../constants';
+import {
+  COLORS,
+  GAME_WIDTH,
+  GRAVITY,
+  GROUND_TOP,
+  HERO_WIDTH,
+  HERO_X,
+  JUMP_VELOCITY,
+  SCROLL_SPEED,
+  STAIR_STEP_HEIGHT,
+} from '../constants';
 import type { Beatmap, BeatEvent, ObstacleType } from '../beatmap/types';
 import type { Box } from './Hero';
+
+/**
+ * Riding a stair step (unlike clearing a normal obstacle) needs the hero's
+ * feet already above the step's top the instant it arrives — a jump timed
+ * to the beat, like every other obstacle in the game teaches, is otherwise
+ * still low on its arc and clips the step instead of landing on it. Delaying
+ * a step's physical arrival until the jump's apex — where height is least
+ * sensitive to timing — lets an on-the-beat jump land with a wide margin
+ * instead of requiring a jump ~0.3s early.
+ */
+const STAIR_ARRIVAL_DELAY = Math.abs(JUMP_VELOCITY) / GRAVITY; // seconds to reach apex
+const STAIR_LEAD_PX = STAIR_ARRIVAL_DELAY * SCROLL_SPEED;
 
 export type HeroAction = 'jump' | 'duck' | 'kick';
 
@@ -28,6 +50,9 @@ interface ObstacleDef {
   groundHazard?: boolean;
 }
 
+const BRANCH_WIDTH = 120;
+const BRANCH_HEIGHT = 50;
+
 const DEFS: Record<ObstacleType, ObstacleDef> = {
   pit: {
     width: 90,
@@ -37,9 +62,9 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
     groundHazard: true,
   },
   branch: {
-    width: 120,
-    parts: [{ dx: 0, cy: 395, w: 120, h: 50, color: COLORS.branch }],
-    collide: { dx: 0, cy: 395, w: 120, h: 50 },
+    width: BRANCH_WIDTH,
+    parts: [{ dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT, color: COLORS.branch }],
+    collide: { dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT },
     requiredActions: ['duck'],
   },
   breakableWall: {
@@ -84,10 +109,49 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
   },
 };
 
+/**
+ * What every non-branch obstacle (zombie, pit, hardWall, breakableWall,
+ * lava) becomes while elevated: a plain rideable platform, identical in
+ * shape to a normal branch. This guarantees the upper floors have exactly
+ * as much to land on as the song has obstacles — no ground-anchored hazard
+ * floating nonsensically in mid-air, and no beat left with nothing to jump
+ * to. Ordinary branches and stair tiers are already fine as they are (type
+ * 'branch' already doubles as a platform) so they're left untouched.
+ */
+const ELEVATED_PLATFORM_DEF: ObstacleDef = {
+  width: BRANCH_WIDTH,
+  parts: [{ dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT, color: COLORS.branch }],
+  collide: { dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT },
+  requiredActions: ['jump'],
+};
+
+/**
+ * A staircase step is a 'branch' whose height is derived from its tier
+ * instead of DEFS.branch's fixed cy — tier 1 lines up exactly with a normal
+ * branch (see STAIR_STEP_HEIGHT's doc comment), each tier above that another
+ * STAIR_STEP_HEIGHT higher. Riding tier STAIRS_PER_FLOOR lands the hero
+ * exactly at the next floor's ground level.
+ */
+function stairDef(tier: number): ObstacleDef {
+  const cy = GROUND_TOP - tier * STAIR_STEP_HEIGHT + BRANCH_HEIGHT / 2;
+  return {
+    width: BRANCH_WIDTH,
+    parts: [{ dx: 0, cy, w: BRANCH_WIDTH, h: BRANCH_HEIGHT, color: COLORS.branch }],
+    collide: { dx: 0, cy, w: BRANCH_WIDTH, h: BRANCH_HEIGHT },
+    requiredActions: ['jump'],
+  };
+}
+
 export class Obstacle {
   readonly type: ObstacleType;
   readonly hitTime: number;
-  readonly def: ObstacleDef;
+  /** The obstacle's active shape — groundDef normally, ELEVATED_PLATFORM_DEF while elevated (see setElevatedPlatform). */
+  def: ObstacleDef;
+  /** The obstacle's real, permanent shape — what it reverts to back at floor 0. */
+  private readonly groundDef: ObstacleDef;
+  private elevatedPlatform = false;
+  /** Set only for the 3 branch events forming a staircase (1..STAIRS_PER_FLOOR). */
+  readonly stairTier?: number;
 
   /** Best |delta| action timing recorded near this obstacle's beat, or null. */
   actionDelta: number | null = null;
@@ -96,27 +160,46 @@ export class Obstacle {
   destroyed = false;
   /** Passed through while the hero was blink-invincible: no score either way. */
   ghosted = false;
+  /** One-shot latch so riding the top step only ever advances the floor once. */
+  stairClaimed = false;
 
   private readonly container: Phaser.GameObjects.Container;
+  private readonly rects: Phaser.GameObjects.Rectangle[];
   private readonly pulseParts: Phaser.GameObjects.Rectangle[];
+  private readonly baseColor: number;
   /**
    * Rhythm rule: at exactly `hitTime` the collision box's leading edge meets
    * the hero's front — acting ON the beat always clears, acting late gets
    * hit. This offset shifts the obstacle so that alignment holds.
    */
   private readonly beatAlign: number;
+  /**
+   * Stand-in for beatAlign while riding as an elevated platform (see
+   * setElevatedPlatform) — adds STAIR_LEAD_PX, same as a stair tier,
+   * delaying physical arrival (but not the hitTime used for scoring) until
+   * the jump apex, see STAIR_ARRIVAL_DELAY. Ground-floor timing (beatAlign)
+   * can't just always include this: it's tuned against this obstacle's own
+   * ground-hazard shape, which an elevated platform doesn't use.
+   */
+  private readonly elevatedBeatAlign: number;
 
   constructor(scene: Phaser.Scene, event: BeatEvent) {
     this.type = event.type;
     this.hitTime = event.time;
-    this.def = DEFS[event.type];
-    const c = this.def.collide;
-    this.beatAlign = HERO_WIDTH / 2 + c.w / 2 - c.dx + 2;
-    const rects = this.def.parts.map((p) =>
+    this.stairTier = event.stairTier;
+    this.groundDef = this.stairTier !== undefined ? stairDef(this.stairTier) : DEFS[event.type];
+    this.def = this.groundDef;
+    this.baseColor = this.groundDef.parts[0].color;
+    const c = this.groundDef.collide;
+    this.beatAlign =
+      HERO_WIDTH / 2 + c.w / 2 - c.dx + 2 + (this.stairTier !== undefined ? STAIR_LEAD_PX : 0);
+    const ec = ELEVATED_PLATFORM_DEF.collide;
+    this.elevatedBeatAlign = HERO_WIDTH / 2 + ec.w / 2 - ec.dx + 2 + STAIR_LEAD_PX;
+    this.rects = this.groundDef.parts.map((p) =>
       scene.add.rectangle(p.dx, p.cy, p.w, p.h, p.color),
     );
-    this.pulseParts = rects.filter((_, i) => this.def.parts[i].pulse);
-    this.container = scene.add.container(-1000, 0, rects);
+    this.pulseParts = this.rects.filter((_, i) => this.groundDef.parts[i].pulse);
+    this.container = scene.add.container(-1000, 0, this.rects);
     this.container.setVisible(false);
   }
 
@@ -129,9 +212,12 @@ export class Obstacle {
   }
 
   /** Reposition from the conductor clock — the only source of movement. */
-  setSongTime(t: number): void {
-    const x = HERO_X + this.beatAlign + (this.hitTime - t) * SCROLL_SPEED;
+  setSongTime(t: number, floorOffsetY = 0): void {
+    const align = this.elevatedPlatform ? this.elevatedBeatAlign : this.beatAlign;
+    const x = HERO_X + align + (this.hitTime - t) * SCROLL_SPEED;
     this.container.x = x;
+    // Once destroyed, explode()'s own tween owns container.y — don't fight it.
+    if (!this.destroyed) this.container.y = floorOffsetY;
     this.container.setVisible(x > -150 && x < GAME_WIDTH + 250 && !this.destroyed);
     if (this.pulseParts.length) {
       const alpha = 0.6 + Math.sin(t * 6) * 0.3;
@@ -139,21 +225,37 @@ export class Obstacle {
     }
   }
 
+  /**
+   * Reshapes every non-branch obstacle into a rideable platform while
+   * elevated (see ELEVATED_PLATFORM_DEF), and back to its real shape at
+   * floor 0. Branches and stair tiers are already fine either way and are
+   * left untouched. No-ops when the state hasn't actually changed.
+   */
+  setElevatedPlatform(on: boolean): void {
+    if (this.type === 'branch' || on === this.elevatedPlatform) return;
+    this.elevatedPlatform = on;
+    this.def = on ? ELEVATED_PLATFORM_DEF : this.groundDef;
+    const p = this.def.parts[0];
+    this.rects[0].setSize(p.w, p.h).setPosition(p.dx, p.cy);
+    // Extra parts (a wall's crack, lava's rocks/glow) only make sense on the real shape.
+    for (let i = 1; i < this.rects.length; i++) this.rects[i].setVisible(!on);
+  }
+
   get collideBox(): Box {
     const c = this.def.collide;
     return {
       left: this.x + c.dx - c.w / 2,
       right: this.x + c.dx + c.w / 2,
-      top: c.cy - c.h / 2,
-      bottom: c.cy + c.h / 2,
+      top: c.cy - c.h / 2 + this.container.y,
+      bottom: c.cy + c.h / 2 + this.container.y,
     };
   }
 
-  /** Branches double as platforms: their top surface, or null if not rideable. */
+  /** Branches (and anything reshaped into one while elevated) double as platforms: their top surface, or null if not rideable. */
   get platformTopY(): number | null {
-    if (this.type !== 'branch') return null;
+    if (this.type !== 'branch' && !this.elevatedPlatform) return null;
     const c = this.def.collide;
-    return c.cy - c.h / 2;
+    return c.cy - c.h / 2 + this.container.y;
   }
 
   /** Kick/stomp destruction with a quick burst animation. */
@@ -163,10 +265,15 @@ export class Obstacle {
       targets: this.container,
       alpha: 0,
       scaleY: 0.2,
-      y: 30,
+      y: this.container.y + 30,
       duration: 160,
       onComplete: () => this.container.setVisible(false),
     });
+  }
+
+  /** Recolor the primary part for the current floor's theme, or revert with no argument. */
+  repaint(color?: number): void {
+    this.rects[0].setFillStyle(color ?? this.baseColor);
   }
 }
 

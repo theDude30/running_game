@@ -31,6 +31,9 @@ export class WeatherSystem {
   constructor(scene: Phaser.Scene, private readonly weatherType: WeatherType) {
     this.emitter = weatherType === 'none' ? null : buildEmitter(scene, weatherType);
     this.emitter?.setDepth(50);
+    // Atmospheric, not part of the world — must stay screen-locked while the
+    // camera pans for floor climbing, same as the rest of the HUD layer.
+    this.emitter?.setScrollFactor(0);
   }
 
   update(m: WeatherMetrics): void {

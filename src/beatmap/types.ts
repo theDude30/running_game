@@ -4,6 +4,12 @@ export interface BeatEvent {
   /** Seconds into the song when the obstacle reaches the hero. */
   time: number;
   type: ObstacleType;
+  /**
+   * Set only on the 3 'branch' events that form a staircase (1/2/3, low to
+   * high). Riding tier 3 climbs the hero to the next floor — see
+   * FLOOR_HEIGHT/STAIR_STEP_HEIGHT in constants.ts.
+   */
+  stairTier?: number;
 }
 
 /**

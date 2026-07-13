@@ -63,6 +63,11 @@ export class Scoring {
     return points;
   }
 
+  /** One-time reward for first reaching a new floor — same flat, no-combo treatment as star bonuses. */
+  addFloorBonus(points: number): void {
+    this.score += points;
+  }
+
   get stats(): RunStats {
     return {
       score: this.score,

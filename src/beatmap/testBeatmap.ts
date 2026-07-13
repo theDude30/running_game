@@ -53,6 +53,15 @@ function build(): Beatmap {
   // Cool-down
   section(events, 88, 2, ['pit', 'branch', 'pit']);
 
+  // Staircase: three ascending rideable branches, appended after the
+  // scripted sections — a floor-climbing fixture for bot-testing (spacing
+  // is generous, well above generate.ts's STAIR_MIN_GAP feasibility floor).
+  events.push(
+    { time: 98 * BEAT, type: 'branch', stairTier: 1 },
+    { time: 100 * BEAT, type: 'branch', stairTier: 2 },
+    { time: 102 * BEAT, type: 'branch', stairTier: 3 },
+  );
+
   events.sort((a, b) => a.time - b.time);
 
   // Easy stars are placed on beats with no jump-forcing obstacle nearby
@@ -68,7 +77,7 @@ function build(): Beatmap {
     { time: 80 * BEAT, tier: 'hard' },
   ];
 
-  return { name: 'Test Track', bpm: BPM, duration: 96 * BEAT, weatherType: 'none', events, stars };
+  return { name: 'Test Track', bpm: BPM, duration: 106 * BEAT, weatherType: 'none', events, stars };
 }
 
 export const testBeatmap: Beatmap = build();
