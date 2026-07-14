@@ -129,7 +129,6 @@ export const COLORS = {
   crack: 0x4b5563,
   hardWall: 0x475569,
   zombie: 0x15803d,
-  zombieEyes: 0xdc2626,
   flyDragon: 0xdc2626,
   lava: 0xc2410c,
   lavaGlow: 0xfacc15,

@@ -12,6 +12,7 @@ import {
 } from '../constants';
 import type { Beatmap, BeatEvent, ObstacleType } from '../beatmap/types';
 import type { Box } from './Hero';
+import mummyUrl from '../assets/obstacles/mummy.png';
 
 /**
  * Riding a stair step (unlike clearing a normal obstacle) needs the hero's
@@ -27,6 +28,12 @@ const STAIR_LEAD_PX = STAIR_ARRIVAL_DELAY * SCROLL_SPEED;
 
 export type HeroAction = 'jump' | 'duck' | 'kick';
 
+const TEX_MUMMY = 'obstacle-mummy';
+
+export function preloadObstacles(scene: Phaser.Scene): void {
+  scene.load.image(TEX_MUMMY, mummyUrl);
+}
+
 interface Part {
   dx: number; // x offset from the obstacle's beat-center
   cy: number; // absolute world y (center)
@@ -35,6 +42,22 @@ interface Part {
   color: number;
   /** Alpha-pulses over time (e.g. glowing lava) instead of sitting static. */
   pulse?: boolean;
+}
+
+/**
+ * A decorative sprite drawn in place of parts[0] on the real ground shape.
+ * parts[0] itself stays in the def (as a hidden hitbox/elevated-platform
+ * stand-in — see setElevatedPlatform) but this image is what's actually
+ * visible while the obstacle sits at floor 0.
+ */
+interface ImageOverlay {
+  key: string;
+  dx: number;
+  cy: number;
+  displayWidth: number;
+  displayHeight: number;
+  originX: number;
+  originY: number;
 }
 
 interface ObstacleDef {
@@ -48,6 +71,7 @@ interface ObstacleDef {
   stompable?: boolean;
   /** Pit-style hazard: only dangerous while the hero is on the ground. */
   groundHazard?: boolean;
+  image?: ImageOverlay;
 }
 
 const BRANCH_WIDTH = 120;
@@ -86,14 +110,28 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
   },
   zombie: {
     width: 40,
-    parts: [
-      { dx: 0, cy: GROUND_TOP - 28, w: 40, h: 56, color: COLORS.zombie },
-      { dx: 8, cy: GROUND_TOP - 46, w: 14, h: 6, color: COLORS.zombieEyes },
-    ],
+    // parts[0] is never actually shown at floor 0 (the mummy image below
+    // replaces it) — it only stands in as the plain rideable platform shape
+    // while elevated, same as every other non-branch hazard (see
+    // ELEVATED_PLATFORM_DEF's doc comment) and as storage for baseColor.
+    parts: [{ dx: 0, cy: GROUND_TOP - 28, w: 40, h: 56, color: COLORS.zombie }],
     collide: { dx: 0, cy: GROUND_TOP - 28, w: 40, h: 56 },
     requiredActions: ['kick', 'jump'],
     kickable: true,
     stompable: true,
+    // Lunging pose: the pointing arm reaches ~60% of the art's width beyond
+    // the body itself, so the origin is anchored on the body mass (not the
+    // image's own center) to keep that outstretched arm/fist clear of the
+    // hitbox, reaching toward the hero instead of sitting inside it.
+    image: {
+      key: TEX_MUMMY,
+      dx: 0,
+      cy: GROUND_TOP,
+      displayWidth: 116,
+      displayHeight: 100,
+      originX: 0.634,
+      originY: 1,
+    },
   },
   lava: {
     width: 130,
@@ -166,6 +204,8 @@ export class Obstacle {
   private readonly container: Phaser.GameObjects.Container;
   private readonly rects: Phaser.GameObjects.Rectangle[];
   private readonly pulseParts: Phaser.GameObjects.Rectangle[];
+  /** Ground-level art overlay (e.g. the mummy sprite) — see ObstacleDef.image. */
+  private readonly image: Phaser.GameObjects.Image | null;
   private readonly baseColor: number;
   /**
    * Rhythm rule: at exactly `hitTime` the collision box's leading edge meets
@@ -199,7 +239,23 @@ export class Obstacle {
       scene.add.rectangle(p.dx, p.cy, p.w, p.h, p.color),
     );
     this.pulseParts = this.rects.filter((_, i) => this.groundDef.parts[i].pulse);
-    this.container = scene.add.container(-1000, 0, this.rects);
+    const overlay = this.groundDef.image;
+    if (overlay) {
+      // The image replaces parts[0] visually at floor 0; parts[0] itself
+      // stays hidden until elevated (see setElevatedPlatform).
+      this.rects[0].setVisible(false);
+      this.image = scene.add
+        .image(overlay.dx, overlay.cy, overlay.key)
+        .setOrigin(overlay.originX, overlay.originY)
+        .setDisplaySize(overlay.displayWidth, overlay.displayHeight);
+    } else {
+      this.image = null;
+    }
+    this.container = scene.add.container(
+      -1000,
+      0,
+      this.image ? [...this.rects, this.image] : this.rects,
+    );
     this.container.setVisible(false);
   }
 
@@ -239,6 +295,12 @@ export class Obstacle {
     this.rects[0].setSize(p.w, p.h).setPosition(p.dx, p.cy);
     // Extra parts (a wall's crack, lava's rocks/glow) only make sense on the real shape.
     for (let i = 1; i < this.rects.length; i++) this.rects[i].setVisible(!on);
+    // parts[0] is hidden behind the image at floor 0 (see constructor) — only
+    // show the plain rect while elevated, and swap the image out in sync.
+    if (this.image) {
+      this.rects[0].setVisible(on);
+      this.image.setVisible(!on);
+    }
   }
 
   get collideBox(): Box {

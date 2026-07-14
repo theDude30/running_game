@@ -28,7 +28,12 @@ import { getAudioContext } from '../audio/sources';
 import { testBeatmap } from '../beatmap/testBeatmap';
 import type { Beatmap, RunConfig } from '../beatmap/types';
 import { Hero, boxesOverlap } from '../gameplay/Hero';
-import { Obstacle, createObstacles, type HeroAction } from '../gameplay/obstacles';
+import {
+  Obstacle,
+  createObstacles,
+  preloadObstacles,
+  type HeroAction,
+} from '../gameplay/obstacles';
 import { createFlyingObstacles, FlyingObstacle } from '../gameplay/flyingObstacles';
 import { Scoring, type Rating } from '../gameplay/Scoring';
 import { createStars, Star } from '../gameplay/Star';
@@ -108,6 +113,7 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     Hero.preload(this);
+    preloadObstacles(this);
   }
 
   create(): void {
