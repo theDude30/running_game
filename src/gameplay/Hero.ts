@@ -26,6 +26,10 @@ import jumpUrl from '../assets/hero/jump.png';
 import fire1Url from '../assets/hero/fire-1.png';
 import fire2Url from '../assets/hero/fire-2.png';
 import fire3Url from '../assets/hero/fire-3.png';
+import fly1Url from '../assets/hero/fly-1.png';
+import fly2Url from '../assets/hero/fly-2.png';
+import fly3Url from '../assets/hero/fly-3.png';
+import fly4Url from '../assets/hero/fly-4.png';
 
 // Sprite art is square and includes flowing hair/guitar that extends well
 // beyond the hitbox, so the visual size is scaled up independently of
@@ -109,6 +113,11 @@ export class Hero {
   private static readonly TEX_FIRE_2 = 'hero-fire-2';
   private static readonly TEX_FIRE_3 = 'hero-fire-3';
   private static readonly ANIM_FIRE = 'hero-fire-anim';
+  private static readonly TEX_FLY_1 = 'hero-fly-1';
+  private static readonly TEX_FLY_2 = 'hero-fly-2';
+  private static readonly TEX_FLY_3 = 'hero-fly-3';
+  private static readonly TEX_FLY_4 = 'hero-fly-4';
+  private static readonly ANIM_FLY = 'hero-fly-anim';
 
   static preload(scene: Phaser.Scene): void {
     scene.load.image(Hero.TEX_MOTORCYCLE_BODY, motorcycleBodyUrl);
@@ -117,6 +126,10 @@ export class Hero {
     scene.load.image(Hero.TEX_FIRE_1, fire1Url);
     scene.load.image(Hero.TEX_FIRE_2, fire2Url);
     scene.load.image(Hero.TEX_FIRE_3, fire3Url);
+    scene.load.image(Hero.TEX_FLY_1, fly1Url);
+    scene.load.image(Hero.TEX_FLY_2, fly2Url);
+    scene.load.image(Hero.TEX_FLY_3, fly3Url);
+    scene.load.image(Hero.TEX_FLY_4, fly4Url);
   }
 
   readonly display: Phaser.GameObjects.Sprite;
@@ -148,6 +161,26 @@ export class Hero {
         frames: [{ key: Hero.TEX_FIRE_1 }, { key: Hero.TEX_FIRE_2 }, { key: Hero.TEX_FIRE_3 }],
         duration: KICK_DURATION * 1000,
         repeat: 0,
+      });
+    }
+    if (!scene.anims.exists(Hero.ANIM_FLY)) {
+      // The 4 frames (also union-cropped to identical dimensions) capture
+      // the wings rising from a half-open to a fully-raised extent. Flight
+      // lasts FLIGHT_DURATION (20s), far longer than one pass through the
+      // frames, so — unlike the fire one-shot — this yoyos back down and
+      // repeats indefinitely, reading as a continuous flap rather than a
+      // single unfurl-and-hold.
+      scene.anims.create({
+        key: Hero.ANIM_FLY,
+        frames: [
+          { key: Hero.TEX_FLY_1 },
+          { key: Hero.TEX_FLY_2 },
+          { key: Hero.TEX_FLY_3 },
+          { key: Hero.TEX_FLY_4 },
+        ],
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
       });
     }
     this.smokeEmitter = buildSmokeEmitter(scene);
@@ -246,6 +279,7 @@ export class Hero {
     this.flyY = GROUND_TOP - HERO_HEIGHT / 2 - 30;
     this.velY = -FLY_ENTRY_SPEED;
     this.thrusting = false;
+    this.display.play(Hero.ANIM_FLY);
   }
 
   /**
@@ -258,6 +292,11 @@ export class Hero {
     this.feetY = groundY;
     this.velY = 0;
     this.jumpsUsed = 0;
+    // Unlike the kick's one-shot fire animation, the flap loops forever
+    // (repeat: -1) and would never stop on its own — left playing, it'd
+    // keep asserting a fly texture frame every tick and fight the ground
+    // branch's setTexture below.
+    this.display.stop();
   }
 
   setThrust(on: boolean): void {
@@ -294,9 +333,13 @@ export class Hero {
 
     let riding = false;
     if (this.mode === 'flying') {
-      this.display.setTexture(Hero.TEX_JUMP);
+      // The flap animation (started in enterFlight()) drives the texture
+      // frame-by-frame — setting one explicitly here would fight it.
       this.display.setOrigin(0.5, 0.5);
-      this.setDisplayHeight(HERO_HEIGHT * SPRITE_SCALE);
+      // Full bike+rider+wings illustration, same aspect family as
+      // motorcycle-body.png — see the scale comment below for why that
+      // means MOTORCYCLE_SPRITE_SCALE rather than SPRITE_SCALE.
+      this.setDisplayHeight(HERO_HEIGHT * MOTORCYCLE_SPRITE_SCALE);
       this.display.setPosition(HERO_X, this.flyY);
     } else {
       const airborne = this.feetY < floorY - 0.5;
