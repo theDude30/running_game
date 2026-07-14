@@ -376,7 +376,7 @@ export class GameScene extends Phaser.Scene {
     for (const s of this.stars) s.setSongTime(t, floorOffsetY);
 
     const floor = this.computeFloorY();
-    this.hero.update(dt, t, floor.y, this.conductor.beatDuration);
+    this.hero.update(dt, t, floor.y);
     if (floor.platform && floor.platform.stairTier === STAIRS_PER_FLOOR && !floor.platform.stairClaimed) {
       floor.platform.stairClaimed = true;
       this.advanceFloor();

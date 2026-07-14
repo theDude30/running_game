@@ -17,50 +17,66 @@ import {
   JUMP_VELOCITY,
   KICK_DURATION,
   KICK_RANGE,
+  SCROLL_SPEED,
   STOMP_BOUNCE,
 } from '../constants';
-import runCycle1Url from '../assets/hero/run-cycle-1.png';
-import runCycle2Url from '../assets/hero/run-cycle-2.png';
-import runCycle3Url from '../assets/hero/run-cycle-3.png';
-import runCycle4Url from '../assets/hero/run-cycle-4.png';
-import runCycle5Url from '../assets/hero/run-cycle-5.png';
-import runCycle6Url from '../assets/hero/run-cycle-6.png';
-import runCycle7Url from '../assets/hero/run-cycle-7.png';
-import runCycle8Url from '../assets/hero/run-cycle-8.png';
-import runCycle9Url from '../assets/hero/run-cycle-9.png';
-import runCycle10Url from '../assets/hero/run-cycle-10.png';
-import runCycle11Url from '../assets/hero/run-cycle-11.png';
-import runCycle12Url from '../assets/hero/run-cycle-12.png';
+import motorcycleBodyUrl from '../assets/hero/motorcycle-body.png';
 import duckUrl from '../assets/hero/duck.png';
 import jumpUrl from '../assets/hero/jump.png';
 import fireUrl from '../assets/hero/fire.png';
-
-const RUN_CYCLE_URLS = [
-  runCycle1Url,
-  runCycle2Url,
-  runCycle3Url,
-  runCycle4Url,
-  runCycle5Url,
-  runCycle6Url,
-  runCycle7Url,
-  runCycle8Url,
-  runCycle9Url,
-  runCycle10Url,
-  runCycle11Url,
-  runCycle12Url,
-];
 
 // Sprite art is square and includes flowing hair/guitar that extends well
 // beyond the hitbox, so the visual size is scaled up independently of
 // HERO_WIDTH/HERO_HEIGHT (which stay pure hitbox dimensions).
 const SPRITE_SCALE = 1.9;
 
-// The source video these 12 frames were extracted from played at 6fps (2s
-// for a full cycle) — a natural jogging cadence. Locking the full cycle to
-// a single beat (0.5s at 120bpm) played it back 4x too fast, so stretch it
-// across several beats instead; still scales with song tempo, just at the
-// source's original pace rather than one loop per beat.
-const RUN_CYCLE_BEATS = 4;
+// The motorcycle source image is a wide side-on illustration (not a human
+// silhouette), so it needs its own scale rather than SPRITE_SCALE — using
+// the human scale made the bike enormous, since the same target HEIGHT
+// produces a much greater WIDTH at this image's ~1.4:1 aspect ratio.
+const MOTORCYCLE_SPRITE_SCALE = 1.35;
+
+// The source clip had no real riding animation (see project history) — every
+// frame was the same static pose. A procedural sine-wave bob on vertical
+// position was tried (at a couple of different speeds/amplitudes) to fake
+// life into the still pose, but it read as jittery/jumpy regardless of
+// tuning, so the body just holds perfectly still now; only the exhaust
+// smoke moves.
+
+// Tried cropping the front wheel out of the source photo as its own
+// spinning sub-sprite, but the fork/caliper attach right at the axle and
+// cover a large wedge of the wheel's circular footprint in the source art
+// — excluding them left a visible gap that rotated through the tire, and
+// attempting to fill that gap from the diametrically-opposite part of the
+// wheel (assuming rotational symmetry) produced visible ghosting instead,
+// since the spoke/rotor layout isn't actually symmetric.
+//
+// A brand-new, self-drawn "spinner" graphic sidesteps that entirely: since
+// it isn't extracted from the source photo, it has no fork/caliper baked
+// into it to conflict with, so it rotates cleanly. Layered on top of the
+// (still static) wheel in the body image at low opacity, it reads as a
+// chrome spinner-blade accessory and gives the wheel a genuine rotation
+// cue. Coordinates are pixel positions in the untouched 948x683 body
+// source image (see motorcycle-body.png).
+const MOTORCYCLE_BODY_TEX_SIZE = { width: 948, height: 683 };
+const MOTORCYCLE_FRONT_WHEEL_CENTER = { x: 800, y: 535 };
+const MOTORCYCLE_REAR_WHEEL_CENTER = { x: 105, y: 535 };
+const MOTORCYCLE_WHEEL_RADIUS = 148; // shared approximation — both wheels are close to this size
+const MOTORCYCLE_SPINNER_TEX_RADIUS = 98; // radius the spike tips are drawn at within their own texture
+const MOTORCYCLE_SPINNER_TEX_SIZE = 200;
+const MOTORCYCLE_WHEEL_SPIN_SPEED = 14; // radians/sec — both wheels spin in sync, like a real bike
+
+// Approximate exhaust outlet position (same coordinate space as above) for
+// the smoke puff emitter.
+const MOTORCYCLE_EXHAUST_POSITION = { x: 60, y: 580 };
+
+// Wind streaks around the rider's head/torso, rushing past leftward (the
+// same direction the scrolling world moves) faster than the world itself
+// scrolls, so the bike reads as actively cutting through the air rather
+// than just sitting in front of a moving background.
+const MOTORCYCLE_WIND_POSITION = { x: 340, y: 160 };
+const MOTORCYCLE_WIND_SPREAD = { x: 90, y: 110 }; // random offset range around the anchor above
+const MOTORCYCLE_WIND_SPEED = SCROLL_SPEED * 1.6;
 
 // The duck pose can't use SPRITE_SCALE like the others: the branch obstacle
 // (see obstacles.ts BRANCH_HEIGHT/cy) only leaves 40px of clearance above
@@ -84,19 +100,24 @@ export type HeroMode = 'ground' | 'flying';
  * matters more here than physics-engine features.
  */
 export class Hero {
-  private static readonly TEX_RUN_CYCLE = RUN_CYCLE_URLS.map((_, i) => `hero-run-${i}`);
+  private static readonly TEX_MOTORCYCLE_BODY = 'hero-motorcycle-body';
   private static readonly TEX_DUCK = 'hero-duck';
   private static readonly TEX_JUMP = 'hero-jump';
   private static readonly TEX_FIRE = 'hero-fire';
 
   static preload(scene: Phaser.Scene): void {
-    RUN_CYCLE_URLS.forEach((url, i) => scene.load.image(Hero.TEX_RUN_CYCLE[i], url));
+    scene.load.image(Hero.TEX_MOTORCYCLE_BODY, motorcycleBodyUrl);
     scene.load.image(Hero.TEX_DUCK, duckUrl);
     scene.load.image(Hero.TEX_JUMP, jumpUrl);
     scene.load.image(Hero.TEX_FIRE, fireUrl);
   }
 
   readonly display: Phaser.GameObjects.Image;
+  private readonly smokeEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly windEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly frontWheelSpinner: Phaser.GameObjects.Image;
+  private readonly rearWheelSpinner: Phaser.GameObjects.Image;
+  private wheelSpinAngle = 0;
   private mode: HeroMode = 'ground';
   private velY = 0;
   private jumpsUsed = 0;
@@ -108,8 +129,15 @@ export class Hero {
   private blinkUntil = -Infinity;
 
   constructor(scene: Phaser.Scene) {
-    this.display = scene.add.image(HERO_X, GROUND_TOP, Hero.TEX_RUN_CYCLE[0]).setOrigin(0.5, 1);
+    this.display = scene.add.image(HERO_X, GROUND_TOP, Hero.TEX_MOTORCYCLE_BODY).setOrigin(0.5, 1);
     this.display.setDisplaySize(HERO_HEIGHT * SPRITE_SCALE, HERO_HEIGHT * SPRITE_SCALE);
+    this.smokeEmitter = buildSmokeEmitter(scene);
+    this.windEmitter = buildWindEmitter(scene);
+    const spinnerTexture = buildWheelSpinnerTexture(scene);
+    this.frontWheelSpinner = scene.add
+      .image(HERO_X, GROUND_TOP, spinnerTexture)
+      .setOrigin(0.5, 0.5);
+    this.rearWheelSpinner = scene.add.image(HERO_X, GROUND_TOP, spinnerTexture).setOrigin(0.5, 0.5);
   }
 
   private get height(): number {
@@ -170,7 +198,12 @@ export class Hero {
   kickBox(now: number): Box | null {
     if (!this.isKicking(now)) return null;
     const b = this.bounds;
-    return { left: b.right, right: b.right + KICK_RANGE, top: this.feetY - 56, bottom: this.feetY - 6 };
+    return {
+      left: b.right,
+      right: b.right + KICK_RANGE,
+      top: this.feetY - 56,
+      bottom: this.feetY - 6,
+    };
   }
 
   isBlinking(now: number): boolean {
@@ -223,11 +256,8 @@ export class Hero {
   /**
    * @param floorY Ground-mode only: the surface the hero rests on this frame
    *   (GROUND_TOP normally, or an obstacle's top when riding it as a platform).
-   * @param beatDuration Seconds per beat (60 / bpm) — the run-cycle animation
-   *   completes one full loop every RUN_CYCLE_BEATS beats, so legs visibly
-   *   speed up on faster tracks instead of cycling at a fixed wall-clock rate.
    */
-  update(dt: number, now: number, floorY: number = GROUND_TOP, beatDuration: number = 0.5): void {
+  update(dt: number, now: number, floorY: number = GROUND_TOP): void {
     if (this.mode === 'flying') {
       const accel = this.thrusting ? -FLY_UP_ACCEL : FLY_GRAVITY;
       this.velY = Phaser.Math.Clamp(this.velY + accel * dt, -FLY_MAX_UP_SPEED, FLY_MAX_FALL_SPEED);
@@ -242,6 +272,7 @@ export class Hero {
       }
     }
 
+    let riding = false;
     if (this.mode === 'flying') {
       this.display.setTexture(Hero.TEX_JUMP);
       this.display.setOrigin(0.5, 0.5);
@@ -249,26 +280,75 @@ export class Hero {
       this.display.setPosition(HERO_X, this.flyY);
     } else {
       const airborne = this.feetY < floorY - 0.5;
-      const frameCount = Hero.TEX_RUN_CYCLE.length;
-      const frameInterval = (beatDuration * RUN_CYCLE_BEATS) / frameCount;
-      // `now` (Conductor.songTime) is negative during the pre-song countdown;
-      // JS's `%` can return a negative result for a negative dividend, so
-      // normalize into [0, frameCount) rather than indexing with it directly.
-      const cycleIndex = ((Math.floor(now / frameInterval) % frameCount) + frameCount) % frameCount;
-      const runFrame = Hero.TEX_RUN_CYCLE[cycleIndex];
+      riding = !this.isKicking(now) && !this.ducking && !airborne;
       const texture = this.isKicking(now)
         ? Hero.TEX_FIRE
         : this.ducking
           ? Hero.TEX_DUCK
           : airborne
             ? Hero.TEX_JUMP
-            : runFrame;
+            : Hero.TEX_MOTORCYCLE_BODY;
       this.display.setTexture(texture);
       this.display.setOrigin(0.5, 1);
-      this.setDisplayHeight(this.ducking ? DUCK_SPRITE_SIZE : this.height * SPRITE_SCALE);
+      this.setDisplayHeight(
+        this.ducking
+          ? DUCK_SPRITE_SIZE
+          : this.height * (riding ? MOTORCYCLE_SPRITE_SCALE : SPRITE_SCALE),
+      );
       this.display.setPosition(HERO_X, this.feetY);
     }
+    this.updateMotorcycleEffects(dt, riding);
     this.display.setAlpha(this.isBlinking(now) ? (Math.sin(now * 40) > 0 ? 0.2 : 0.6) : 1);
+  }
+
+  /**
+   * Positions the exhaust smoke, wind-streak, and wheel-spinner effects to
+   * match the body sprite's current on-screen transform (whatever it
+   * currently is — GROUND_TOP, mid-jump landing, a ridden platform —
+   * rather than assuming a fixed layout), and stops/hides all of them
+   * outside the riding state (ducking, jumping, kicking, flying).
+   */
+  private updateMotorcycleEffects(dt: number, riding: boolean): void {
+    this.frontWheelSpinner.setVisible(riding);
+    this.rearWheelSpinner.setVisible(riding);
+    if (!riding) {
+      this.smokeEmitter.stop();
+      this.windEmitter.stop();
+      return;
+    }
+    const bodyW = this.display.displayWidth;
+    const bodyH = this.display.displayHeight;
+    const originX = this.display.x - bodyW / 2; // origin (0.5, 1): left edge
+    const originY = this.display.y - bodyH; // origin (0.5, 1): top edge
+    const scale = bodyH / MOTORCYCLE_BODY_TEX_SIZE.height;
+
+    this.wheelSpinAngle += dt * MOTORCYCLE_WHEEL_SPIN_SPEED;
+    // Scales the spinner texture so its spike tips (drawn at
+    // MOTORCYCLE_SPINNER_TEX_RADIUS within the texture) land exactly on
+    // the wheel's true radius on screen.
+    const spinnerSize =
+      (MOTORCYCLE_WHEEL_RADIUS * MOTORCYCLE_SPINNER_TEX_SIZE * scale) /
+      MOTORCYCLE_SPINNER_TEX_RADIUS;
+    for (const [spinner, center] of [
+      [this.frontWheelSpinner, MOTORCYCLE_FRONT_WHEEL_CENTER],
+      [this.rearWheelSpinner, MOTORCYCLE_REAR_WHEEL_CENTER],
+    ] as const) {
+      spinner.setRotation(this.wheelSpinAngle);
+      spinner.setDisplaySize(spinnerSize, spinnerSize);
+      spinner.setPosition(originX + center.x * scale, originY + center.y * scale);
+    }
+
+    this.smokeEmitter.setPosition(
+      originX + MOTORCYCLE_EXHAUST_POSITION.x * scale,
+      originY + MOTORCYCLE_EXHAUST_POSITION.y * scale,
+    );
+    this.smokeEmitter.start();
+
+    this.windEmitter.setPosition(
+      originX + MOTORCYCLE_WIND_POSITION.x * scale,
+      originY + MOTORCYCLE_WIND_POSITION.y * scale,
+    );
+    this.windEmitter.start();
   }
 
   /**
@@ -287,4 +367,101 @@ export class Hero {
 
 export function boxesOverlap(a: Box, b: Box): boolean {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+/** Exhaust puffs: small grey circles drifting back-left (away from the direction of travel) and fading out. */
+function buildSmokeEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
+  const textureKey = 'hero-motorcycle-smoke';
+  if (!scene.textures.exists(textureKey)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xaaaaaa, 1);
+    g.fillCircle(6, 6, 6);
+    g.generateTexture(textureKey, 12, 12);
+    g.destroy();
+  }
+  const emitter = scene.add.particles(0, 0, textureKey, {
+    lifespan: 500,
+    speed: { min: 10, max: 30 },
+    angle: { min: 160, max: 200 },
+    scale: { start: 0.6, end: 1.8 },
+    alpha: { start: 0.5, end: 0 },
+    quantity: 1,
+    frequency: 90,
+    tint: 0x999999,
+  });
+  emitter.stop();
+  return emitter;
+}
+
+/**
+ * Wind streaks: short white lines rushing back-left past the rider's
+ * head/torso, faster than the world scroll (see MOTORCYCLE_WIND_SPEED),
+ * to sell the sense of the bike actively cutting through the air rather
+ * than sitting still in front of a moving background.
+ */
+function buildWindEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
+  const textureKey = 'hero-motorcycle-wind';
+  if (!scene.textures.exists(textureKey)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(0, 0, 26, 2);
+    g.generateTexture(textureKey, 26, 2);
+    g.destroy();
+  }
+  const emitter = scene.add.particles(0, 0, textureKey, {
+    x: { min: -MOTORCYCLE_WIND_SPREAD.x, max: MOTORCYCLE_WIND_SPREAD.x },
+    y: { min: -MOTORCYCLE_WIND_SPREAD.y, max: MOTORCYCLE_WIND_SPREAD.y },
+    lifespan: 220,
+    speed: MOTORCYCLE_WIND_SPEED,
+    angle: { min: 175, max: 185 },
+    scale: { min: 0.7, max: 1.3 },
+    alpha: { start: 0.45, end: 0 },
+    quantity: 1,
+    frequency: 45,
+    tint: 0xdff2ff,
+  });
+  emitter.stop();
+  return emitter;
+}
+
+/**
+ * A 6-blade chrome "spinner" drawn from scratch (not extracted from the
+ * source photo) so it has no fork/caliper baked into it to conflict with —
+ * see the comment above MOTORCYCLE_FRONT_WHEEL_CENTER for why that matters.
+ * Semi-transparent so the wheel's own rotor/spoke art still shows through.
+ */
+function buildWheelSpinnerTexture(scene: Phaser.Scene): string {
+  const textureKey = 'hero-motorcycle-spinner';
+  if (scene.textures.exists(textureKey)) return textureKey;
+
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const size = MOTORCYCLE_SPINNER_TEX_SIZE;
+  const center = size / 2;
+  const innerR = 30;
+  const outerR = MOTORCYCLE_SPINNER_TEX_RADIUS;
+  const bladeHalfAngle = 0.07; // radians
+  const bladeCount = 6;
+
+  g.fillStyle(0xe8eef2, 0.55);
+  for (let i = 0; i < bladeCount; i++) {
+    const angle = (i / bladeCount) * Math.PI * 2;
+    const tipX = center + Math.cos(angle) * outerR;
+    const tipY = center + Math.sin(angle) * outerR;
+    const base1X = center + Math.cos(angle - bladeHalfAngle) * innerR;
+    const base1Y = center + Math.sin(angle - bladeHalfAngle) * innerR;
+    const base2X = center + Math.cos(angle + bladeHalfAngle) * innerR;
+    const base2Y = center + Math.sin(angle + bladeHalfAngle) * innerR;
+    g.beginPath();
+    g.moveTo(tipX, tipY);
+    g.lineTo(base1X, base1Y);
+    g.lineTo(base2X, base2Y);
+    g.closePath();
+    g.fillPath();
+  }
+  g.fillStyle(0xcfd8dc, 0.6);
+  g.fillCircle(center, center, innerR * 0.7);
+
+  g.generateTexture(textureKey, size, size);
+  g.destroy();
+  return textureKey;
 }
