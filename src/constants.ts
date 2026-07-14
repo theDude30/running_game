@@ -17,7 +17,7 @@ export const HERO_HEIGHT = 64;
 export const DUCK_HEIGHT = 34;
 
 // Actions
-export const KICK_DURATION = 0.18; // seconds the kick hitbox stays active
+export const KICK_DURATION = 0.35; // seconds the kick hitbox stays active
 export const KICK_RANGE = 50; // px in front of the hero
 export const BLINK_DURATION = 2; // invincibility after a hit
 

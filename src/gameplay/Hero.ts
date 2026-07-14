@@ -23,7 +23,9 @@ import {
 import motorcycleBodyUrl from '../assets/hero/motorcycle-body.png';
 import duckUrl from '../assets/hero/duck.png';
 import jumpUrl from '../assets/hero/jump.png';
-import fireUrl from '../assets/hero/fire.png';
+import fire1Url from '../assets/hero/fire-1.png';
+import fire2Url from '../assets/hero/fire-2.png';
+import fire3Url from '../assets/hero/fire-3.png';
 
 // Sprite art is square and includes flowing hair/guitar that extends well
 // beyond the hitbox, so the visual size is scaled up independently of
@@ -103,16 +105,21 @@ export class Hero {
   private static readonly TEX_MOTORCYCLE_BODY = 'hero-motorcycle-body';
   private static readonly TEX_DUCK = 'hero-duck';
   private static readonly TEX_JUMP = 'hero-jump';
-  private static readonly TEX_FIRE = 'hero-fire';
+  private static readonly TEX_FIRE_1 = 'hero-fire-1';
+  private static readonly TEX_FIRE_2 = 'hero-fire-2';
+  private static readonly TEX_FIRE_3 = 'hero-fire-3';
+  private static readonly ANIM_FIRE = 'hero-fire-anim';
 
   static preload(scene: Phaser.Scene): void {
     scene.load.image(Hero.TEX_MOTORCYCLE_BODY, motorcycleBodyUrl);
     scene.load.image(Hero.TEX_DUCK, duckUrl);
     scene.load.image(Hero.TEX_JUMP, jumpUrl);
-    scene.load.image(Hero.TEX_FIRE, fireUrl);
+    scene.load.image(Hero.TEX_FIRE_1, fire1Url);
+    scene.load.image(Hero.TEX_FIRE_2, fire2Url);
+    scene.load.image(Hero.TEX_FIRE_3, fire3Url);
   }
 
-  readonly display: Phaser.GameObjects.Image;
+  readonly display: Phaser.GameObjects.Sprite;
   private readonly smokeEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly windEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly frontWheelSpinner: Phaser.GameObjects.Image;
@@ -129,8 +136,20 @@ export class Hero {
   private blinkUntil = -Infinity;
 
   constructor(scene: Phaser.Scene) {
-    this.display = scene.add.image(HERO_X, GROUND_TOP, Hero.TEX_MOTORCYCLE_BODY).setOrigin(0.5, 1);
+    this.display = scene.add.sprite(HERO_X, GROUND_TOP, Hero.TEX_MOTORCYCLE_BODY).setOrigin(0.5, 1);
     this.display.setDisplaySize(HERO_HEIGHT * SPRITE_SCALE, HERO_HEIGHT * SPRITE_SCALE);
+    if (!scene.anims.exists(Hero.ANIM_FIRE)) {
+      // The 3 frames were union-cropped to identical pixel dimensions (see
+      // project history), so the sprite doesn't jitter in size as Phaser
+      // steps through them. Duration matches KICK_DURATION exactly since
+      // the kick is a single short one-shot, not a looping/beat-synced action.
+      scene.anims.create({
+        key: Hero.ANIM_FIRE,
+        frames: [{ key: Hero.TEX_FIRE_1 }, { key: Hero.TEX_FIRE_2 }, { key: Hero.TEX_FIRE_3 }],
+        duration: KICK_DURATION * 1000,
+        repeat: 0,
+      });
+    }
     this.smokeEmitter = buildSmokeEmitter(scene);
     this.windEmitter = buildWindEmitter(scene);
     const spinnerTexture = buildWheelSpinnerTexture(scene);
@@ -188,6 +207,7 @@ export class Hero {
 
   kick(now: number): void {
     this.kickUntil = now + KICK_DURATION;
+    this.display.play(Hero.ANIM_FIRE);
   }
 
   isKicking(now: number): boolean {
@@ -280,20 +300,24 @@ export class Hero {
       this.display.setPosition(HERO_X, this.flyY);
     } else {
       const airborne = this.feetY < floorY - 0.5;
-      riding = !this.isKicking(now) && !this.ducking && !airborne;
-      const texture = this.isKicking(now)
-        ? Hero.TEX_FIRE
-        : this.ducking
-          ? Hero.TEX_DUCK
-          : airborne
-            ? Hero.TEX_JUMP
-            : Hero.TEX_MOTORCYCLE_BODY;
-      this.display.setTexture(texture);
+      const kicking = this.isKicking(now);
+      riding = !kicking && !this.ducking && !airborne;
+      // While kicking, the fire animation (started in kick()) drives the
+      // texture frame-by-frame — setting one explicitly here would fight it.
+      if (!kicking) {
+        this.display.setTexture(
+          this.ducking ? Hero.TEX_DUCK : airborne ? Hero.TEX_JUMP : Hero.TEX_MOTORCYCLE_BODY,
+        );
+      }
       this.display.setOrigin(0.5, 1);
+      // The fire frames are full bike+rider illustrations, same aspect
+      // family as motorcycle-body.png, so they need the bike's scale too —
+      // not SPRITE_SCALE, which is tuned for the human-silhouette poses
+      // (duck/jump) and would render the kick noticeably oversized.
       this.setDisplayHeight(
         this.ducking
           ? DUCK_SPRITE_SIZE
-          : this.height * (riding ? MOTORCYCLE_SPRITE_SCALE : SPRITE_SCALE),
+          : this.height * (riding || kicking ? MOTORCYCLE_SPRITE_SCALE : SPRITE_SCALE),
       );
       this.display.setPosition(HERO_X, this.feetY);
     }
