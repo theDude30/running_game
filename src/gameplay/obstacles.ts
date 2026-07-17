@@ -107,14 +107,24 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
   },
   breakableWall: {
     width: 44,
-    parts: [
-      { dx: 0, cy: GROUND_TOP - 70, w: 44, h: 140, color: COLORS.breakableWall },
-      // visible "crack" telegraphs kickability (readability rule)
-      { dx: 0, cy: GROUND_TOP - 70, w: 8, h: 124, color: COLORS.crack },
-    ],
+    parts: [{ dx: 0, cy: GROUND_TOP - 70, w: 44, h: 140, color: COLORS.breakableWall }],
     collide: { dx: 0, cy: GROUND_TOP - 70, w: 44, h: 140 },
     requiredActions: ['kick', 'jump'],
     kickable: true,
+    // Cracked ancient bricks oozing lava — the deep cracks telegraph
+    // kickability (readability rule), in contrast to the sealed steel
+    // pillar of hardWall. Slightly larger than the collision box, same
+    // forgiving-hitbox convention as the other overlays.
+    image: {
+      key: HERO_ATLAS,
+      frame: 'brick-wall',
+      dx: 0,
+      cy: GROUND_TOP,
+      displayWidth: 48,
+      displayHeight: 145,
+      originX: 0.5,
+      originY: 1,
+    },
   },
   hardWall: {
     width: 44,

@@ -460,9 +460,29 @@
     "h": 450
    }
   },
-  "steel-wall": {
+  "brick-wall": {
    "frame": {
     "x": 3643,
+    "y": 2204,
+    "w": 144,
+    "h": 435
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 144,
+    "h": 435
+   },
+   "sourceSize": {
+    "w": 144,
+    "h": 435
+   }
+  },
+  "steel-wall": {
+   "frame": {
+    "x": 3799,
     "y": 2204,
     "w": 156,
     "h": 300
