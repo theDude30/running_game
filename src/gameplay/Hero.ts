@@ -23,13 +23,33 @@ import {
 import motorcycleBodyUrl from '../assets/hero/motorcycle-body.png';
 import duckUrl from '../assets/hero/duck.png';
 import jumpUrl from '../assets/hero/jump.png';
-import fire1Url from '../assets/hero/fire-1.png';
-import fire2Url from '../assets/hero/fire-2.png';
-import fire3Url from '../assets/hero/fire-3.png';
-import fly1Url from '../assets/hero/fly-1.png';
-import fly2Url from '../assets/hero/fly-2.png';
-import fly3Url from '../assets/hero/fly-3.png';
-import fly4Url from '../assets/hero/fly-4.png';
+
+/**
+ * Animation frames extracted from the source clips at their native 24fps
+ * (see docs/asset-quality-plan.md for the extraction pipeline). Filenames
+ * are zero-padded so lexicographic key order IS playback order.
+ */
+function frameUrls(glob: Record<string, string>): string[] {
+  return Object.keys(glob)
+    .sort()
+    .map((k) => glob[k]);
+}
+const FIRE_FRAME_URLS = frameUrls(
+  import.meta.glob('../assets/hero/fire-*.png', { eager: true, import: 'default' }) as Record<
+    string,
+    string
+  >,
+);
+const FLY_FRAME_URLS = frameUrls(
+  import.meta.glob('../assets/hero/fly-*.png', { eager: true, import: 'default' }) as Record<
+    string,
+    string
+  >,
+);
+// One full wing-flap cycle: frames 73–95 of the source clip (every 2nd frame,
+// picked by SSIM for the cleanest loop seam), so the loop plays forward at
+// the clip's natural flap speed instead of yoyo-ing a half cycle.
+const FLY_CYCLE_MS = 1000;
 
 // Sprite art is square and includes flowing hair/guitar that extends well
 // beyond the hitbox, so the visual size is scaled up independently of
@@ -109,27 +129,17 @@ export class Hero {
   private static readonly TEX_MOTORCYCLE_BODY = 'hero-motorcycle-body';
   private static readonly TEX_DUCK = 'hero-duck';
   private static readonly TEX_JUMP = 'hero-jump';
-  private static readonly TEX_FIRE_1 = 'hero-fire-1';
-  private static readonly TEX_FIRE_2 = 'hero-fire-2';
-  private static readonly TEX_FIRE_3 = 'hero-fire-3';
+  private static readonly FIRE_FRAME_KEYS = FIRE_FRAME_URLS.map((_, i) => `hero-fire-${i}`);
   private static readonly ANIM_FIRE = 'hero-fire-anim';
-  private static readonly TEX_FLY_1 = 'hero-fly-1';
-  private static readonly TEX_FLY_2 = 'hero-fly-2';
-  private static readonly TEX_FLY_3 = 'hero-fly-3';
-  private static readonly TEX_FLY_4 = 'hero-fly-4';
+  private static readonly FLY_FRAME_KEYS = FLY_FRAME_URLS.map((_, i) => `hero-fly-${i}`);
   private static readonly ANIM_FLY = 'hero-fly-anim';
 
   static preload(scene: Phaser.Scene): void {
     scene.load.image(Hero.TEX_MOTORCYCLE_BODY, motorcycleBodyUrl);
     scene.load.image(Hero.TEX_DUCK, duckUrl);
     scene.load.image(Hero.TEX_JUMP, jumpUrl);
-    scene.load.image(Hero.TEX_FIRE_1, fire1Url);
-    scene.load.image(Hero.TEX_FIRE_2, fire2Url);
-    scene.load.image(Hero.TEX_FIRE_3, fire3Url);
-    scene.load.image(Hero.TEX_FLY_1, fly1Url);
-    scene.load.image(Hero.TEX_FLY_2, fly2Url);
-    scene.load.image(Hero.TEX_FLY_3, fly3Url);
-    scene.load.image(Hero.TEX_FLY_4, fly4Url);
+    Hero.FIRE_FRAME_KEYS.forEach((key, i) => scene.load.image(key, FIRE_FRAME_URLS[i]));
+    Hero.FLY_FRAME_KEYS.forEach((key, i) => scene.load.image(key, FLY_FRAME_URLS[i]));
   }
 
   readonly display: Phaser.GameObjects.Sprite;
@@ -152,34 +162,28 @@ export class Hero {
     this.display = scene.add.sprite(HERO_X, GROUND_TOP, Hero.TEX_MOTORCYCLE_BODY).setOrigin(0.5, 1);
     this.display.setDisplaySize(HERO_HEIGHT * SPRITE_SCALE, HERO_HEIGHT * SPRITE_SCALE);
     if (!scene.anims.exists(Hero.ANIM_FIRE)) {
-      // The 3 frames were union-cropped to identical pixel dimensions (see
-      // project history), so the sprite doesn't jitter in size as Phaser
-      // steps through them. Duration matches KICK_DURATION exactly since
-      // the kick is a single short one-shot, not a looping/beat-synced action.
+      // 8 consecutive source frames from the sustained-blast section, all
+      // rendered on one shared bike-aligned canvas (the bike sits at the
+      // same relative position/scale as in motorcycle-body.png, flame
+      // extending right), so the bike doesn't shift when the texture swaps
+      // in and out or between frames. Duration matches KICK_DURATION, which
+      // at 8 frames ≈ the clip's native 24fps flicker.
       scene.anims.create({
         key: Hero.ANIM_FIRE,
-        frames: [{ key: Hero.TEX_FIRE_1 }, { key: Hero.TEX_FIRE_2 }, { key: Hero.TEX_FIRE_3 }],
+        frames: Hero.FIRE_FRAME_KEYS.map((key) => ({ key })),
         duration: KICK_DURATION * 1000,
         repeat: 0,
       });
     }
     if (!scene.anims.exists(Hero.ANIM_FLY)) {
-      // The 4 frames (also union-cropped to identical dimensions) capture
-      // the wings rising from a half-open to a fully-raised extent. Flight
-      // lasts FLIGHT_DURATION (20s), far longer than one pass through the
-      // frames, so — unlike the fire one-shot — this yoyos back down and
-      // repeats indefinitely, reading as a continuous flap rather than a
-      // single unfurl-and-hold.
+      // One full flap cycle (see FLY_CYCLE_MS) looping forward — flight
+      // lasts FLIGHT_DURATION (20s), far longer than one cycle. A forward
+      // loop of the complete cycle replaced the old 4-frame yoyo: real wing
+      // beats aren't time-symmetric, so the yoyo read as mechanical.
       scene.anims.create({
         key: Hero.ANIM_FLY,
-        frames: [
-          { key: Hero.TEX_FLY_1 },
-          { key: Hero.TEX_FLY_2 },
-          { key: Hero.TEX_FLY_3 },
-          { key: Hero.TEX_FLY_4 },
-        ],
-        duration: 400,
-        yoyo: true,
+        frames: Hero.FLY_FRAME_KEYS.map((key) => ({ key })),
+        duration: FLY_CYCLE_MS,
         repeat: -1,
       });
     }
