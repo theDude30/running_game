@@ -21,6 +21,13 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  render: {
+    // Trilinear mipmapping removes minification shimmer on the sprite art.
+    // WebGL1 only mipmaps power-of-two textures — which is exactly why the
+    // sprite atlas is packed to POT dimensions (see scripts/pack-atlas.py);
+    // non-POT textures (generated particle/spinner textures) are unaffected.
+    mipmapFilter: 'LINEAR_MIPMAP_LINEAR',
+  },
   input: {
     // duck-hold + jump tap + kick tap can be simultaneous on touch
     activePointers: 3,

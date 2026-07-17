@@ -11,8 +11,7 @@ import {
   STAIR_STEP_HEIGHT,
 } from '../constants';
 import type { Beatmap, BeatEvent, ObstacleType } from '../beatmap/types';
-import type { Box } from './Hero';
-import mummyUrl from '../assets/obstacles/mummy.png';
+import { HERO_ATLAS, type Box } from './Hero';
 
 /**
  * Riding a stair step (unlike clearing a normal obstacle) needs the hero's
@@ -27,12 +26,6 @@ const STAIR_ARRIVAL_DELAY = Math.abs(JUMP_VELOCITY) / GRAVITY; // seconds to rea
 const STAIR_LEAD_PX = STAIR_ARRIVAL_DELAY * SCROLL_SPEED;
 
 export type HeroAction = 'jump' | 'duck' | 'kick';
-
-const TEX_MUMMY = 'obstacle-mummy';
-
-export function preloadObstacles(scene: Phaser.Scene): void {
-  scene.load.image(TEX_MUMMY, mummyUrl);
-}
 
 interface Part {
   dx: number; // x offset from the obstacle's beat-center
@@ -52,6 +45,7 @@ interface Part {
  */
 interface ImageOverlay {
   key: string;
+  frame: string;
   dx: number;
   cy: number;
   displayWidth: number;
@@ -124,7 +118,8 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
     // image's own center) to keep that outstretched arm/fist clear of the
     // hitbox, reaching toward the hero instead of sitting inside it.
     image: {
-      key: TEX_MUMMY,
+      key: HERO_ATLAS,
+      frame: 'mummy',
       dx: 0,
       cy: GROUND_TOP,
       displayWidth: 116,
@@ -245,7 +240,7 @@ export class Obstacle {
       // stays hidden until elevated (see setElevatedPlatform).
       this.rects[0].setVisible(false);
       this.image = scene.add
-        .image(overlay.dx, overlay.cy, overlay.key)
+        .image(overlay.dx, overlay.cy, overlay.key, overlay.frame)
         .setOrigin(overlay.originX, overlay.originY)
         .setDisplaySize(overlay.displayWidth, overlay.displayHeight);
     } else {

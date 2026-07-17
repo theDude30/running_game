@@ -20,32 +20,23 @@ import {
   SCROLL_SPEED,
   STOMP_BOUNCE,
 } from '../constants';
-import motorcycleBodyUrl from '../assets/hero/motorcycle-body.png';
-import duckUrl from '../assets/hero/duck.png';
-import jumpUrl from '../assets/hero/jump.png';
+import atlasPngUrl from '../assets/atlas/hero.png';
+import atlasJsonUrl from '../assets/atlas/hero.json?url';
 
 /**
- * Animation frames extracted from the source clips at their native 24fps
- * (see docs/asset-quality-plan.md for the extraction pipeline). Filenames
- * are zero-padded so lexicographic key order IS playback order.
+ * All hero (and mummy) art lives in a single power-of-two atlas — see
+ * scripts/pack-atlas.py, which packs the loose source PNGs from
+ * src/assets/hero + src/assets/obstacles. POT matters: WebGL1 only mipmaps
+ * power-of-two textures (render.mipmapFilter in main.ts). Frame names are
+ * the source file basenames; animation frames are zero-padded so
+ * lexicographic order IS playback order.
  */
-function frameUrls(glob: Record<string, string>): string[] {
-  return Object.keys(glob)
-    .sort()
-    .map((k) => glob[k]);
-}
-const FIRE_FRAME_URLS = frameUrls(
-  import.meta.glob('../assets/hero/fire-*.png', { eager: true, import: 'default' }) as Record<
-    string,
-    string
-  >,
-);
-const FLY_FRAME_URLS = frameUrls(
-  import.meta.glob('../assets/hero/fly-*.png', { eager: true, import: 'default' }) as Record<
-    string,
-    string
-  >,
-);
+export const HERO_ATLAS = 'hero-atlas';
+const FRAME_MOTORCYCLE_BODY = 'motorcycle-body';
+const FRAME_DUCK = 'duck';
+const FRAME_JUMP = 'jump';
+const FIRE_FRAMES = Array.from({ length: 8 }, (_, i) => `fire-${String(i + 1).padStart(2, '0')}`);
+const FLY_FRAMES = Array.from({ length: 12 }, (_, i) => `fly-${String(i + 1).padStart(2, '0')}`);
 // One full wing-flap cycle: frames 73–95 of the source clip (every 2nd frame,
 // picked by SSIM for the cleanest loop seam), so the loop plays forward at
 // the clip's natural flap speed instead of yoyo-ing a half cycle.
@@ -129,20 +120,11 @@ export type HeroMode = 'ground' | 'flying';
  * matters more here than physics-engine features.
  */
 export class Hero {
-  private static readonly TEX_MOTORCYCLE_BODY = 'hero-motorcycle-body';
-  private static readonly TEX_DUCK = 'hero-duck';
-  private static readonly TEX_JUMP = 'hero-jump';
-  private static readonly FIRE_FRAME_KEYS = FIRE_FRAME_URLS.map((_, i) => `hero-fire-${i}`);
   private static readonly ANIM_FIRE = 'hero-fire-anim';
-  private static readonly FLY_FRAME_KEYS = FLY_FRAME_URLS.map((_, i) => `hero-fly-${i}`);
   private static readonly ANIM_FLY = 'hero-fly-anim';
 
   static preload(scene: Phaser.Scene): void {
-    scene.load.image(Hero.TEX_MOTORCYCLE_BODY, motorcycleBodyUrl);
-    scene.load.image(Hero.TEX_DUCK, duckUrl);
-    scene.load.image(Hero.TEX_JUMP, jumpUrl);
-    Hero.FIRE_FRAME_KEYS.forEach((key, i) => scene.load.image(key, FIRE_FRAME_URLS[i]));
-    Hero.FLY_FRAME_KEYS.forEach((key, i) => scene.load.image(key, FLY_FRAME_URLS[i]));
+    scene.load.atlas(HERO_ATLAS, atlasPngUrl, atlasJsonUrl);
   }
 
   readonly display: Phaser.GameObjects.Sprite;
@@ -162,7 +144,9 @@ export class Hero {
   private blinkUntil = -Infinity;
 
   constructor(scene: Phaser.Scene) {
-    this.display = scene.add.sprite(HERO_X, GROUND_TOP, Hero.TEX_MOTORCYCLE_BODY).setOrigin(0.5, 1);
+    this.display = scene.add
+      .sprite(HERO_X, GROUND_TOP, HERO_ATLAS, FRAME_MOTORCYCLE_BODY)
+      .setOrigin(0.5, 1);
     this.display.setDisplaySize(HERO_HEIGHT * SPRITE_SCALE, HERO_HEIGHT * SPRITE_SCALE);
     if (!scene.anims.exists(Hero.ANIM_FIRE)) {
       // 8 consecutive source frames from the sustained-blast section, all
@@ -173,7 +157,7 @@ export class Hero {
       // at 8 frames ≈ the clip's native 24fps flicker.
       scene.anims.create({
         key: Hero.ANIM_FIRE,
-        frames: Hero.FIRE_FRAME_KEYS.map((key) => ({ key })),
+        frames: FIRE_FRAMES.map((frame) => ({ key: HERO_ATLAS, frame })),
         duration: KICK_DURATION * 1000,
         repeat: 0,
       });
@@ -185,7 +169,7 @@ export class Hero {
       // beats aren't time-symmetric, so the yoyo read as mechanical.
       scene.anims.create({
         key: Hero.ANIM_FLY,
-        frames: Hero.FLY_FRAME_KEYS.map((key) => ({ key })),
+        frames: FLY_FRAMES.map((frame) => ({ key: HERO_ATLAS, frame })),
         duration: FLY_CYCLE_MS,
         repeat: -1,
       });
@@ -356,7 +340,8 @@ export class Hero {
       // texture frame-by-frame — setting one explicitly here would fight it.
       if (!kicking) {
         this.display.setTexture(
-          this.ducking ? Hero.TEX_DUCK : airborne ? Hero.TEX_JUMP : Hero.TEX_MOTORCYCLE_BODY,
+          HERO_ATLAS,
+          this.ducking ? FRAME_DUCK : airborne ? FRAME_JUMP : FRAME_MOTORCYCLE_BODY,
         );
       }
       this.display.setOrigin(0.5, 1);
@@ -433,8 +418,12 @@ export class Hero {
    * visible size/position wobble when the run frames alternated.
    */
   private setDisplayHeight(targetHeight: number): void {
-    const src = this.display.texture.source[0];
-    const aspect = src.width / src.height;
+    // realWidth/realHeight are the UNtrimmed source dimensions — atlas frames
+    // are alpha-trimmed (see scripts/pack-atlas.py) and Phaser restores the
+    // full canvas geometry from them, so scaling must use these, not the
+    // packed rect.
+    const frame = this.display.frame;
+    const aspect = frame.realWidth / frame.realHeight;
     this.display.setDisplaySize(targetHeight * aspect, targetHeight);
   }
 }

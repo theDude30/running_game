@@ -146,12 +146,26 @@ What shipped (July 16, 2026):
 Deferred to Phase 4: POT atlas packing + `mipmapFilter` (do it once all
 assets are final, one packing pass).
 
-### Phase 4 — Roll out to all assets
+### Phase 4 — Shared POT atlas + mipmaps ✅ DONE
 
-- [ ] Static poses from 4K stills: duck, jump, mummy (+ any future obstacles)
-- [ ] Fire-kick frames (video pipeline, same as Phase 3)
-- [ ] Everything into the shared atlas; delete loose PNGs
-- [ ] Commit the prep script + document the pipeline in README
+What shipped (July 17, 2026):
+
+- **`scripts/pack-atlas.py`** (committed): packs all 24 frames (hero poses,
+  fire, fly, mummy) into one **4096×4096 POT atlas** (`src/assets/atlas/`),
+  Phaser JSON-hash format, alpha-trimmed frames + 2px edge extrusion against
+  mipmap bleed, quantized to one shared 256-color palette without dithering
+  → **2.1MB** shipped instead of 24 separate PNGs.
+- Loose per-frame PNGs stay in the repo as the **source of truth** (now clean
+  full-RGBA — the earlier per-frame dithered quantization was removed because
+  dither speckle wrecked atlas compression; they are not imported by game
+  code, so Vite doesn't bundle them). Rerun the script after changing any.
+- `render.mipmapFilter: 'LINEAR_MIPMAP_LINEAR'` enabled in main.ts (POT-only
+  in WebGL1 — that's the point of the POT atlas).
+- Hero.ts loads one atlas; anims/textures reference frame names; display
+  scaling uses `frame.realWidth/realHeight` (trim-safe). Mummy overlay reads
+  the same atlas (`preloadObstacles` removed).
+- Verified in-game from the atlas: ride, kick, flight loop, mummy; no edge
+  bleeding; `tsc`/`eslint`/`vite build` pass.
 
 ### Phase 5 (optional experiment) — true vector
 
