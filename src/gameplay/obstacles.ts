@@ -121,6 +121,20 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
     parts: [{ dx: 0, cy: GROUND_TOP - 45, w: 44, h: 90, color: COLORS.hardWall }],
     collide: { dx: 0, cy: GROUND_TOP - 45, w: 44, h: 90 },
     requiredActions: ['jump'],
+    // Steel pillar wrapped in electrified barbed wire — reads as "can't
+    // break this, jump it", in contrast to the cracked breakable wall.
+    // Drawn slightly larger than the collision box (barbs/top overhang),
+    // same forgiving-hitbox convention as the mummy's outstretched arm.
+    image: {
+      key: HERO_ATLAS,
+      frame: 'steel-wall',
+      dx: 0,
+      cy: GROUND_TOP,
+      displayWidth: 52,
+      displayHeight: 100,
+      originX: 0.5,
+      originY: 1,
+    },
   },
   zombie: {
     width: 40,

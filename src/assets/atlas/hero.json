@@ -460,6 +460,26 @@
     "h": 450
    }
   },
+  "steel-wall": {
+   "frame": {
+    "x": 3643,
+    "y": 2204,
+    "w": 156,
+    "h": 300
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 156,
+    "h": 300
+   },
+   "sourceSize": {
+    "w": 156,
+    "h": 300
+   }
+  },
   "duck": {
    "frame": {
     "x": 6,
