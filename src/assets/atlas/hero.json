@@ -479,6 +479,26 @@
     "w": 593,
     "h": 280
    }
+  },
+  "wall": {
+   "frame": {
+    "x": 611,
+    "y": 2698,
+    "w": 360,
+    "h": 150
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 360,
+    "h": 150
+   },
+   "sourceSize": {
+    "w": 360,
+    "h": 150
+   }
   }
  },
  "meta": {

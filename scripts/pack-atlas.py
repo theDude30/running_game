@@ -28,7 +28,7 @@ EXTRUDE = 2  # duplicated edge pixels around each frame
 
 sources = sorted(
     [os.path.join(HERO, f) for f in os.listdir(HERO) if f.endswith('.png')]
-    + [os.path.join(OBST, 'mummy.png')]
+    + [os.path.join(OBST, f) for f in os.listdir(OBST) if f.endswith('.png')]
 )
 
 entries = []

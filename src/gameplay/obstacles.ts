@@ -71,6 +71,25 @@ interface ObstacleDef {
 const BRANCH_WIDTH = 120;
 const BRANCH_HEIGHT = 50;
 
+/**
+ * The grass-topped wall art (atlas frame 'wall') drawn for every
+ * platform-shaped surface: the duck-under branch, stair steps, and the
+ * platform every other obstacle becomes while elevated. The art fills the
+ * exact collision box — the grass tips ARE the rideable top surface.
+ */
+function wallOverlay(cy: number): ImageOverlay {
+  return {
+    key: HERO_ATLAS,
+    frame: 'wall',
+    dx: 0,
+    cy,
+    displayWidth: BRANCH_WIDTH,
+    displayHeight: BRANCH_HEIGHT,
+    originX: 0.5,
+    originY: 0.5,
+  };
+}
+
 const DEFS: Record<ObstacleType, ObstacleDef> = {
   pit: {
     width: 90,
@@ -84,6 +103,7 @@ const DEFS: Record<ObstacleType, ObstacleDef> = {
     parts: [{ dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT, color: COLORS.branch }],
     collide: { dx: 0, cy: 395, w: BRANCH_WIDTH, h: BRANCH_HEIGHT },
     requiredActions: ['duck'],
+    image: wallOverlay(395),
   },
   breakableWall: {
     width: 44,
@@ -172,6 +192,7 @@ function stairDef(tier: number): ObstacleDef {
     parts: [{ dx: 0, cy, w: BRANCH_WIDTH, h: BRANCH_HEIGHT, color: COLORS.branch }],
     collide: { dx: 0, cy, w: BRANCH_WIDTH, h: BRANCH_HEIGHT },
     requiredActions: ['jump'],
+    image: wallOverlay(cy),
   };
 }
 
@@ -201,6 +222,8 @@ export class Obstacle {
   private readonly pulseParts: Phaser.GameObjects.Rectangle[];
   /** Ground-level art overlay (e.g. the mummy sprite) — see ObstacleDef.image. */
   private readonly image: Phaser.GameObjects.Image | null;
+  /** Grass-wall art shown while this obstacle rides as an elevated platform (see setElevatedPlatform). */
+  private readonly platformImage: Phaser.GameObjects.Image | null;
   private readonly baseColor: number;
   /**
    * Rhythm rule: at exactly `hitTime` the collision box's leading edge meets
@@ -246,11 +269,22 @@ export class Obstacle {
     } else {
       this.image = null;
     }
-    this.container = scene.add.container(
-      -1000,
-      0,
-      this.image ? [...this.rects, this.image] : this.rects,
-    );
+    if (this.type !== 'branch') {
+      // Pre-built (hidden) so becoming an elevated platform is a pure
+      // visibility flip; branches already show the wall via their overlay.
+      const o = wallOverlay(ELEVATED_PLATFORM_DEF.parts[0].cy);
+      this.platformImage = scene.add
+        .image(o.dx, o.cy, o.key, o.frame)
+        .setDisplaySize(o.displayWidth, o.displayHeight)
+        .setVisible(false);
+    } else {
+      this.platformImage = null;
+    }
+    this.container = scene.add.container(-1000, 0, [
+      ...this.rects,
+      ...(this.image ? [this.image] : []),
+      ...(this.platformImage ? [this.platformImage] : []),
+    ]);
     this.container.setVisible(false);
   }
 
@@ -290,12 +324,12 @@ export class Obstacle {
     this.rects[0].setSize(p.w, p.h).setPosition(p.dx, p.cy);
     // Extra parts (a wall's crack, lava's rocks/glow) only make sense on the real shape.
     for (let i = 1; i < this.rects.length; i++) this.rects[i].setVisible(!on);
-    // parts[0] is hidden behind the image at floor 0 (see constructor) — only
-    // show the plain rect while elevated, and swap the image out in sync.
-    if (this.image) {
-      this.rects[0].setVisible(on);
-      this.image.setVisible(!on);
-    }
+    // While elevated, the grass-wall art IS the platform visual; parts[0]
+    // only ever shows at floor 0, and then only when no ground image (the
+    // mummy) is covering it.
+    this.rects[0].setVisible(!on && !this.groundDef.image);
+    this.image?.setVisible(!on);
+    this.platformImage?.setVisible(on);
   }
 
   get collideBox(): Box {
