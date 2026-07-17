@@ -60,7 +60,9 @@ const SPRITE_SCALE = 1.9;
 // silhouette), so it needs its own scale rather than SPRITE_SCALE — using
 // the human scale made the bike enormous, since the same target HEIGHT
 // produces a much greater WIDTH at this image's ~1.4:1 aspect ratio.
-const MOTORCYCLE_SPRITE_SCALE = 1.35;
+// Tuned so the BIKE (wheel diameter) renders at the same world size it had
+// with the previous texture, whose rider sat lower relative to the wheels.
+const MOTORCYCLE_SPRITE_SCALE = 1.58;
 
 // The source clip had no real riding animation (see project history) — every
 // frame was the same static pose. A procedural sine-wave bob on vertical
@@ -82,25 +84,26 @@ const MOTORCYCLE_SPRITE_SCALE = 1.35;
 // into it to conflict with, so it rotates cleanly. Layered on top of the
 // (still static) wheel in the body image at low opacity, it reads as a
 // chrome spinner-blade accessory and gives the wheel a genuine rotation
-// cue. Coordinates are pixel positions in the untouched 948x683 body
-// source image (see motorcycle-body.png).
-const MOTORCYCLE_BODY_TEX_SIZE = { width: 948, height: 683 };
-const MOTORCYCLE_FRONT_WHEEL_CENTER = { x: 800, y: 535 };
-const MOTORCYCLE_REAR_WHEEL_CENTER = { x: 105, y: 535 };
-const MOTORCYCLE_WHEEL_RADIUS = 148; // shared approximation — both wheels are close to this size
+// cue. Coordinates are pixel positions in the 746x550 body texture
+// (see motorcycle-body.png; the fire-kick frames share this bike geometry
+// so the bike doesn't shift when the kick texture swaps in).
+const MOTORCYCLE_BODY_TEX_SIZE = { width: 746, height: 550 };
+const MOTORCYCLE_FRONT_WHEEL_CENTER = { x: 640, y: 444 };
+const MOTORCYCLE_REAR_WHEEL_CENTER = { x: 125, y: 458 };
+const MOTORCYCLE_WHEEL_RADIUS = 101; // shared approximation — both wheels are close to this size
 const MOTORCYCLE_SPINNER_TEX_RADIUS = 98; // radius the spike tips are drawn at within their own texture
 const MOTORCYCLE_SPINNER_TEX_SIZE = 200;
 const MOTORCYCLE_WHEEL_SPIN_SPEED = 14; // radians/sec — both wheels spin in sync, like a real bike
 
 // Approximate exhaust outlet position (same coordinate space as above) for
 // the smoke puff emitter.
-const MOTORCYCLE_EXHAUST_POSITION = { x: 60, y: 580 };
+const MOTORCYCLE_EXHAUST_POSITION = { x: 95, y: 488 };
 
 // Wind streaks around the rider's head/torso, rushing past leftward (the
 // same direction the scrolling world moves) faster than the world itself
 // scrolls, so the bike reads as actively cutting through the air rather
 // than just sitting in front of a moving background.
-const MOTORCYCLE_WIND_POSITION = { x: 340, y: 160 };
+const MOTORCYCLE_WIND_POSITION = { x: 299, y: 173 };
 const MOTORCYCLE_WIND_SPREAD = { x: 90, y: 110 }; // random offset range around the anchor above
 const MOTORCYCLE_WIND_SPEED = SCROLL_SPEED * 1.6;
 

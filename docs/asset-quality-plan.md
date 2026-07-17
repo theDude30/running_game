@@ -84,15 +84,30 @@ sequences (fly flap, fire kick) must come from video frames.
 - Perf cost = 4× pixels on 2× screens (routine for WebGL; lower the DPR cap
   in constants.ts if an old Android device struggles).
 
-### Phase 2 — Pilot asset: motorcycle-body from the 4K still
+### Phase 2 — Static poses from the 4K stills ✅ DONE
 
-- [ ] Download the original Seedream still as PNG from Scenario (5376×3024, alpha)
-- [ ] Local prep (script it from day one — `scripts/prepare-asset.sh`):
-      `magick in.png -trim +repage -filter Lanczos -resize x500 out.png` + `oxipng`
-- [ ] Replace `motorcycle-body.png`; convert `MOTORCYCLE_*` pixel-coordinate
-      constants in `Hero.ts` (wheel centers, exhaust, wind anchor) to
-      **relative (0–1) coordinates** so they survive any future source size
-- [ ] Verify in-game vs. old asset (wheel spinners must still sit on the axles)
+What shipped (July 17, 2026):
+
+- **Discovery**: Scenario's PNG export is RGB — the stills' "transparency" is
+  a PAINTED near-white checkerboard (Seedream drew fake transparency; this is
+  also why every derived video had baked checker). All stills therefore go
+  through rembg (isnet-general-use for bike poses, isnet-anime for the mummy).
+- **motorcycle-body.png**: rebuilt from the 5376×3024 riding still →
+  746×550 (103KB vs 768KB). The new rider sits taller relative to the wheels
+  than the old texture, so instead of forcing the old canvas geometry, the new
+  texture became the reference: wheel centers re-measured (rear 125,458 r~100;
+  front 640,444 r~103), `MOTORCYCLE_*` constants in Hero.ts updated, and the
+  **8 fire frames were rebuilt against the new geometry** (983×550) so the
+  kick swap stays seamless. `MOTORCYCLE_SPRITE_SCALE` 1.35 → 1.58 keeps the
+  bike's on-screen size unchanged (display height covers more headroom now).
+- **duck.png**: from its 4K still → 593×280 (55KB vs 996KB).
+- **jump.png**: no 4K still exists for the wheelie — re-extracted frame 60 of
+  the 848×480 wheelie clip through the clean pipeline → 585×450 (74KB vs
+  324KB). Optional upgrade later: Flash VSR the clip (credits) and redo.
+- **mummy.png**: from its 4K still → 582×500 (39KB vs 312KB).
+- Verified in-game: ride/kick/duck/jump/mummy, wheel spinners centered on the
+  new hub coordinates, exhaust + wind anchors correct.
+- Old assets preserved in scratchpad `old-assets-backup/` + git history.
 
 ### Phase 3 — Animations: fly flap loop + fire kick ✅ DONE (atlas deferred)
 
