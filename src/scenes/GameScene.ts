@@ -3,6 +3,7 @@ import {
   BRANCH_LAND_TOLERANCE,
   COLORS,
   COMBO_TO_FLY,
+  DPR,
   FLIGHT_DURATION,
   FLOOR_BONUS,
   FLOOR_CLIMB_PAN_MS,
@@ -132,7 +133,11 @@ export class GameScene extends Phaser.Scene {
       this.analyserNode.connect(ctx.destination);
       const clock = new SmoothClock(ctx);
       this.conductor = new Conductor(this.beatmap.bpm, () => clock.now(), false);
-      this.weatherAnalyzer = new WeatherAnalyzer(this.analyserNode, ctx.sampleRate, () => this.conductor.songTime);
+      this.weatherAnalyzer = new WeatherAnalyzer(
+        this.analyserNode,
+        ctx.sampleRate,
+        () => this.conductor.songTime,
+      );
       this.weatherSystem = new WeatherSystem(this, this.beatmap.weatherType);
     } else {
       this.audioCtx = null;
@@ -151,6 +156,10 @@ export class GameScene extends Phaser.Scene {
     this.lastBeat = -Infinity;
     this.currentFloor = 0;
     this.highestFloorReached = 0;
+    // High-DPI: zoom from the top-left so coordinates stay 960×540 (see DPR).
+    // Zooming from the corner (not the default center) is what lets scrollY
+    // keep its existing meaning — 0 = ground floor, floor pans unchanged.
+    this.cameras.main.setOrigin(0, 0).setZoom(DPR);
     this.cameras.main.scrollY = 0;
 
     // World — deliberately left at the default scrollFactor (1), unlike the
@@ -176,23 +185,39 @@ export class GameScene extends Phaser.Scene {
     // vertically for floor climbing; world objects (hero, obstacles, stars)
     // deliberately stay at the default scrollFactor 1 so they pan with it.
     this.scoreText = this.add
-      .text(20, 16, 'SCORE 0', { fontFamily: 'monospace', fontSize: '24px', color: '#ffffff' })
+      .text(20, 16, 'SCORE 0', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '24px',
+        color: '#ffffff',
+      })
       .setDepth(100)
       .setScrollFactor(0);
     this.starText = this.add
       .text(20, 44, `★ 0/${this.beatmap.stars.length}`, {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '16px',
         color: '#fde68a',
       })
       .setDepth(100)
       .setScrollFactor(0);
     this.floorText = this.add
-      .text(20, 68, '', { fontFamily: 'monospace', fontSize: '14px', color: '#93c5fd' })
+      .text(20, 68, '', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '14px',
+        color: '#93c5fd',
+      })
       .setDepth(100)
       .setScrollFactor(0);
     this.comboText = this.add
-      .text(GAME_WIDTH - 20, 16, '', { fontFamily: 'monospace', fontSize: '24px', color: '#facc15' })
+      .text(GAME_WIDTH - 20, 16, '', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '24px',
+        color: '#facc15',
+      })
       .setOrigin(1, 0)
       .setDepth(100)
       .setScrollFactor(0);
@@ -206,15 +231,24 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(100)
       .setScrollFactor(0);
-    this.beatDot = this.add.circle(GAME_WIDTH / 2, 48, 6, 0x4ade80).setDepth(100).setScrollFactor(0);
+    this.beatDot = this.add
+      .circle(GAME_WIDTH / 2, 48, 6, 0x4ade80)
+      .setDepth(100)
+      .setScrollFactor(0);
     this.countdownText = this.add
-      .text(GAME_WIDTH / 2, 240, '', { fontFamily: 'monospace', fontSize: '96px', color: '#ffffff' })
+      .text(GAME_WIDTH / 2, 240, '', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '96px',
+        color: '#ffffff',
+      })
       .setOrigin(0.5)
       .setDepth(100)
       .setScrollFactor(0);
     this.flyBannerText = this.add
       .text(GAME_WIDTH / 2, 90, '✈ FLYING! hold to climb, release to dive', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '20px',
         color: '#38bdf8',
       })
@@ -223,7 +257,12 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setVisible(false);
     this.flyTimerText = this.add
-      .text(GAME_WIDTH / 2, 120, '', { fontFamily: 'monospace', fontSize: '16px', color: '#38bdf8' })
+      .text(GAME_WIDTH / 2, 120, '', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '16px',
+        color: '#38bdf8',
+      })
       .setOrigin(0.5)
       .setDepth(100)
       .setScrollFactor(0)
@@ -244,7 +283,12 @@ export class GameScene extends Phaser.Scene {
 
     // Pause
     const pauseBtn = this.add
-      .text(GAME_WIDTH - 24, 60, '❚❚', { fontFamily: 'monospace', fontSize: '26px', color: '#8888aa' })
+      .text(GAME_WIDTH - 24, 60, '❚❚', {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '26px',
+        color: '#8888aa',
+      })
       .setOrigin(1, 0)
       .setDepth(100)
       .setScrollFactor(0)
@@ -290,10 +334,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildPauseOverlay(): void {
-    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6);
+    const dim = this.add.rectangle(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      GAME_WIDTH,
+      GAME_HEIGHT,
+      0x000000,
+      0.6,
+    );
     const label = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'PAUSED\n\ntap or ESC to resume', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '32px',
         color: '#ffffff',
         align: 'center',
@@ -383,7 +435,11 @@ export class GameScene extends Phaser.Scene {
 
     const floor = this.computeFloorY();
     this.hero.update(dt, t, floor.y);
-    if (floor.platform && floor.platform.stairTier === STAIRS_PER_FLOOR && !floor.platform.stairClaimed) {
+    if (
+      floor.platform &&
+      floor.platform.stairTier === STAIRS_PER_FLOOR &&
+      !floor.platform.stairClaimed
+    ) {
       floor.platform.stairClaimed = true;
       this.advanceFloor();
     } else if (
@@ -510,7 +566,9 @@ export class GameScene extends Phaser.Scene {
       // THIS floor's ground — floor-aware, not the raw base-floor constant,
       // or they'd wrongly stop hitting once the hero climbs a floor.
       const overlapping = o.def.groundHazard
-        ? heroB.bottom >= GROUND_TOP + this.floorOffsetY - 2 && heroB.right > box.left && heroB.left < box.right
+        ? heroB.bottom >= GROUND_TOP + this.floorOffsetY - 2 &&
+          heroB.right > box.left &&
+          heroB.left < box.right
         : boxesOverlap(heroB, box);
       if (!overlapping) continue;
 
@@ -756,15 +814,14 @@ export class GameScene extends Phaser.Scene {
     this.scoreText.setText(`SCORE ${this.scoring.score}`);
     this.starText.setText(`★ ${this.scoring.starsCollected}/${this.scoring.starsTotal}`);
     const m = this.scoring.multiplier;
-    this.comboText.setText(
-      this.scoring.combo > 0 ? `×${m}  ${this.scoring.combo} combo` : '',
-    );
+    this.comboText.setText(this.scoring.combo > 0 ? `×${m}  ${this.scoring.combo} combo` : '');
   }
 
   private popup(text: string, color: string): void {
     const label = this.add
       .text(HERO_X + 60, this.hero.bounds.top - 24, text, {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '22px',
         color,
       })

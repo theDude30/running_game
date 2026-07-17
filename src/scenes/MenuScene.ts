@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../constants';
+import { DPR, GAME_HEIGHT, GAME_WIDTH } from '../constants';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -7,9 +7,12 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    // High-DPI: zoom from the top-left so coordinates stay 960×540 (see DPR).
+    this.cameras.main.setOrigin(0, 0).setZoom(DPR);
     this.add
       .text(GAME_WIDTH / 2, 150, 'RHYTHM RUNNER', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '56px',
         color: '#ffffff',
       })
@@ -18,6 +21,7 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(GAME_WIDTH / 2, 215, 'Local Game · Test Track · 120 BPM (silent metronome)', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '16px',
         color: '#8888aa',
       })
@@ -26,6 +30,7 @@ export class MenuScene extends Phaser.Scene {
     const start = this.add
       .text(GAME_WIDTH / 2, 320, 'TAP OR PRESS SPACE TO START', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '26px',
         color: '#4ade80',
       })
@@ -39,6 +44,7 @@ export class MenuScene extends Phaser.Scene {
         'JUMP  tap / space / ↑  (twice = double jump)\nDUCK  hold ↓ / left pad      KICK  X / F / right pad',
         {
           fontFamily: 'monospace',
+          resolution: DPR,
           fontSize: '16px',
           color: '#8888aa',
           align: 'center',

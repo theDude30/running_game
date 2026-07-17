@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../constants';
+import { DPR, GAME_HEIGHT, GAME_WIDTH } from '../constants';
 import { decodeArrayBuffer, fetchYouTubeAudio, loadLocalFile } from '../audio/sources';
 import { generateBeatmap } from '../beatmap/generate';
 import { testBeatmap } from '../beatmap/testBeatmap';
@@ -17,12 +17,15 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    // High-DPI: zoom from the top-left so coordinates stay 960×540 (see DPR).
+    this.cameras.main.setOrigin(0, 0).setZoom(DPR);
     this.busy = false;
     this.ready = false;
 
     this.add
       .text(GAME_WIDTH / 2, 90, 'SELECT MUSIC', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '44px',
         color: '#ffffff',
       })
@@ -38,6 +41,7 @@ export class SongSelectScene extends Phaser.Scene {
     this.status = this.add
       .text(GAME_WIDTH / 2, 470, '', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '18px',
         color: '#8888aa',
         align: 'center',
@@ -48,12 +52,19 @@ export class SongSelectScene extends Phaser.Scene {
     this.startPrompt = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT - 30, 'TAP OR PRESS SPACE TO START', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '24px',
         color: '#4ade80',
       })
       .setOrigin(0.5)
       .setVisible(false);
-    this.tweens.add({ targets: this.startPrompt, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 });
+    this.tweens.add({
+      targets: this.startPrompt,
+      alpha: 0.3,
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+    });
 
     const begin = () => {
       if (this.ready) this.scene.start('Game');
@@ -66,6 +77,7 @@ export class SongSelectScene extends Phaser.Scene {
     const t = this.add
       .text(GAME_WIDTH / 2, y, `[ ${label} ]`, {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '24px',
         color: '#93c5fd',
       })
@@ -73,10 +85,13 @@ export class SongSelectScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     t.on('pointerover', () => t.setColor('#ffffff'));
     t.on('pointerout', () => t.setColor('#93c5fd'));
-    t.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation(); // don't trigger the scene-level "start" tap
-      if (!this.busy) onClick();
-    });
+    t.on(
+      'pointerdown',
+      (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev.stopPropagation(); // don't trigger the scene-level "start" tap
+        if (!this.busy) onClick();
+      },
+    );
   }
 
   private showUrlInput(): void {
@@ -139,7 +154,9 @@ export class SongSelectScene extends Phaser.Scene {
 
       const beatmap = await generateBeatmap(mono, buffer.sampleRate, buffer.duration, name, (p) =>
         this.setStatus(
-          p.stage === 'analyzing' ? `Analyzing beats… ${Math.round(p.pct * 100)}%` : 'Building level…',
+          p.stage === 'analyzing'
+            ? `Analyzing beats… ${Math.round(p.pct * 100)}%`
+            : 'Building level…',
         ),
       );
       if (beatmap.events.length < 5) {

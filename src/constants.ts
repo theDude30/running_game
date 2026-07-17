@@ -1,6 +1,18 @@
 export const GAME_WIDTH = 960;
 export const GAME_HEIGHT = 540;
 
+// Phaser 3 sizes its canvas in CSS pixels and ignores devicePixelRatio, so on
+// a 2×/3× display a 960×540 canvas gets CSS-stretched and blurs everything.
+// The canvas is therefore created DPR× larger (main.ts) and every scene's
+// camera zooms by DPR from the top-left corner (setOrigin(0,0).setZoom(DPR)),
+// which keeps all gameplay/scroll coordinates in the fixed 960×540 space.
+// Capped at 3 (iPhone-class); higher DPRs cost GPU fill-rate with no visible
+// gain at this art scale. Pointer coordinates arrive in canvas pixels and
+// must be divided by DPR to compare against logical positions — Phaser's own
+// hit-testing handles this, raw pointer.x/y users must do it themselves
+// (see InputController).
+export const DPR = Math.min(window.devicePixelRatio || 1, 3);
+
 // World geometry (fixed internal coordinates, see Scale.FIT in main.ts)
 export const GROUND_TOP = 460;
 export const HERO_X = 160;

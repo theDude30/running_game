@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../constants';
+import { DPR, GAME_HEIGHT, GAME_WIDTH } from '../constants';
 
 /**
  * Unified keyboard + touch input. Emits:
@@ -82,17 +82,28 @@ export class InputController extends Phaser.Events.EventEmitter {
   }
 
   private inZone(p: Phaser.Input.Pointer, z: { x: number; y: number; r: number }): boolean {
-    return Phaser.Math.Distance.Between(p.x, p.y, z.x, z.y) <= z.r;
+    // Pointer coordinates are in canvas pixels — DPR× the logical 960×540
+    // space the zones are defined in (see DPR in constants.ts).
+    return Phaser.Math.Distance.Between(p.x / DPR, p.y / DPR, z.x, z.y) <= z.r;
   }
 
   private inExcluded(p: Phaser.Input.Pointer): boolean {
     return this.zones.some((z) => this.inZone(p, z));
   }
 
-  private drawPad(scene: Phaser.Scene, z: { x: number; y: number; r: number }, label: string): void {
+  private drawPad(
+    scene: Phaser.Scene,
+    z: { x: number; y: number; r: number },
+    label: string,
+  ): void {
     scene.add.circle(z.x, z.y, z.r, 0xffffff, 0.08).setStrokeStyle(2, 0xffffff, 0.2).setDepth(90);
     scene.add
-      .text(z.x, z.y, label, { fontFamily: 'monospace', fontSize: '20px', color: '#ffffff' })
+      .text(z.x, z.y, label, {
+        fontFamily: 'monospace',
+        resolution: DPR,
+        fontSize: '20px',
+        color: '#ffffff',
+      })
       .setOrigin(0.5)
       .setAlpha(0.4)
       .setDepth(90);

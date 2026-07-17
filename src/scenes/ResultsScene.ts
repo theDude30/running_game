@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../constants';
+import { DPR, GAME_HEIGHT, GAME_WIDTH } from '../constants';
 import type { RunStats } from '../gameplay/Scoring';
 
 export class ResultsScene extends Phaser.Scene {
@@ -8,11 +8,14 @@ export class ResultsScene extends Phaser.Scene {
   }
 
   create(data: RunStats): void {
+    // High-DPI: zoom from the top-left so coordinates stay 960×540 (see DPR).
+    this.cameras.main.setOrigin(0, 0).setZoom(DPR);
     const { score, maxCombo, counts, starsCollected, starsTotal } = data;
 
     this.add
       .text(GAME_WIDTH / 2, 100, 'TRACK COMPLETE', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '40px',
         color: '#ffffff',
       })
@@ -21,6 +24,7 @@ export class ResultsScene extends Phaser.Scene {
     this.add
       .text(GAME_WIDTH / 2, 190, `SCORE  ${score}`, {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '48px',
         color: '#4ade80',
       })
@@ -33,6 +37,7 @@ export class ResultsScene extends Phaser.Scene {
         `Max combo  ${maxCombo}\n\nPerfect ${counts.perfect}   Good ${counts.good}   OK ${counts.ok}   Miss ${counts.miss}`,
         {
           fontFamily: 'monospace',
+          resolution: DPR,
           fontSize: '20px',
           color: '#aaaacc',
           align: 'center',
@@ -44,6 +49,7 @@ export class ResultsScene extends Phaser.Scene {
     this.add
       .text(GAME_WIDTH / 2, 350, `★ Stars  ${starsCollected}/${starsTotal}`, {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '20px',
         color: '#fde68a',
       })
@@ -52,6 +58,7 @@ export class ResultsScene extends Phaser.Scene {
     const again = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT - 110, 'TAP OR PRESS SPACE TO PLAY AGAIN', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '22px',
         color: '#4ade80',
       })
@@ -61,6 +68,7 @@ export class ResultsScene extends Phaser.Scene {
     this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT - 65, 'M — change music', {
         fontFamily: 'monospace',
+        resolution: DPR,
         fontSize: '16px',
         color: '#8888aa',
       })

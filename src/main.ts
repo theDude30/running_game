@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from './constants';
+import { DPR, GAME_HEIGHT, GAME_WIDTH } from './constants';
 import { MenuScene } from './scenes/MenuScene';
 import { SongSelectScene } from './scenes/SongSelectScene';
 import { GameScene } from './scenes/GameScene';
@@ -8,11 +8,14 @@ import { ResultsScene } from './scenes/ResultsScene';
 // Fixed internal resolution (16:9). Scale.FIT letterboxes it onto any
 // phone/tablet/desktop screen while keeping game coordinates constant —
 // gameplay code never needs to care about the physical screen size.
+// The canvas backing store is DPR× larger than the logical 960×540 so it
+// maps ~1:1 to physical pixels on high-DPI screens; each scene's camera
+// zooms by DPR to compensate (see DPR in constants.ts).
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: Math.round(GAME_WIDTH * DPR),
+  height: Math.round(GAME_HEIGHT * DPR),
   backgroundColor: '#0a0a12',
   scale: {
     mode: Phaser.Scale.FIT,
