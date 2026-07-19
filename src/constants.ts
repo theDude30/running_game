@@ -65,7 +65,6 @@ export const FLY_ENTRY_SPEED = 550; // initial pop-up velocity when flight start
 export const FLY_MIN_BAND_SWITCH = 0.75; // min seconds between obstacles that demand opposite bands
 export const FLY_DRAGON_BOB_AMPLITUDE = 16; // px of vertical bob while flying
 export const FLY_DRAGON_BOB_SPEED = 3.4; // rad/sec of the bob cycle
-export const FLY_DRAGON_FLAP_SPEED = 9; // rad/sec of the wing flap
 export const FLY_DRAGON_WEAVE_AMPLITUDE = 22; // px of horizontal weave on top of the scroll
 export const FLY_DRAGON_WEAVE_SPEED = 2.1; // rad/sec of the weave cycle
 
@@ -141,7 +140,6 @@ export const COLORS = {
   crack: 0x4b5563,
   hardWall: 0x475569,
   zombie: 0x15803d,
-  flyDragon: 0xdc2626,
   lava: 0xc2410c,
   lavaGlow: 0xfacc15,
   lavaRock: 0x3f1d0f,
